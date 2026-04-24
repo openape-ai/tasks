@@ -4,7 +4,7 @@ import auth from '../docs/auth.md'
 import cli from '../docs/cli.md'
 import errors from '../docs/errors.md'
 import invites from '../docs/invites.md'
-import plans from '../docs/plans.md'
+import tasks from '../docs/tasks.md'
 import teams from '../docs/teams.md'
 import { printLine } from '../output.ts'
 
@@ -14,7 +14,7 @@ const DOCS: Record<string, string> = {
   cli,
   errors,
   invites,
-  plans,
+  tasks,
   teams,
 }
 
@@ -25,12 +25,12 @@ const DOCS: Record<string, string> = {
  * EXAMPLES
  *   $ ape-tasks docs                # lists topics
  *   $ ape-tasks docs agent          # full agent-focused reference
- *   $ ape-tasks docs invites        # invite flow deep-dive
+ *   $ ape-tasks docs tasks          # task commands + data shape
  */
 export const docsCommand = defineCommand({
   meta: {
     name: 'docs',
-    description: 'Print documentation. Topics: agent, auth, cli, errors, invites, plans, teams.',
+    description: 'Print documentation. Topics: agent, auth, cli, errors, invites, tasks, teams.',
   },
   args: {
     topic: { type: 'positional', required: false, description: 'Topic name. Omit to list topics.' },
