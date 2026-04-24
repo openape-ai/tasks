@@ -1,15 +1,15 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import { defineEventHandler, getQuery, getRouterParam } from 'h3'
 import { useDb } from '../../database/drizzle'
-import { plans, teamInvites, teamMembers, teams } from '../../database/schema'
+import { tasks, teamInvites, teamMembers, teams } from '../../database/schema'
 import { requireCaller } from '../../utils/require-auth'
 import { createProblemError } from '../../utils/problem'
 
 /**
  * DELETE /api/teams/:id — permanently delete a team. Owner only.
  *
- * Refuses with 409 when plans still exist (not deleted) unless `?force=true`.
- * `force=true` cascade-soft-deletes all plans in the team before removal.
+ * Refuses with 409 when tasks still exist (not deleted) unless `?force=true`.
+ * `force=true` cascade-soft-deletes all tasks in the team before removal.
  * Also removes team_members and any outstanding invites.
  */
 export default defineEventHandler(async (event) => {
@@ -29,27 +29,27 @@ export default defineEventHandler(async (event) => {
   if (!membership) throw createProblemError({ status: 403, title: 'Not a team member' })
   if (membership.role !== 'owner') throw createProblemError({ status: 403, title: 'Only owners can delete a team' })
 
-  const alivePlans = await db
-    .select({ id: plans.id })
-    .from(plans)
-    .where(and(eq(plans.teamId, id), isNull(plans.deletedAt)))
+  const aliveTasks = await db
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(and(eq(tasks.teamId, id), isNull(tasks.deletedAt)))
     .all()
 
-  if (alivePlans.length > 0 && !cascade) {
+  if (aliveTasks.length > 0 && !cascade) {
     throw createProblemError({
       status: 409,
-      title: `Team has ${alivePlans.length} plan(s)`,
-      detail: 'Pass ?force=true to cascade-soft-delete them, or remove/archive the plans first.',
+      title: `Team has ${aliveTasks.length} task(s)`,
+      detail: 'Pass ?force=true to cascade-soft-delete them, or remove/archive the tasks first.',
     })
   }
 
   const now = Math.floor(Date.now() / 1000)
-  if (alivePlans.length > 0) {
-    await db.update(plans).set({ deletedAt: now }).where(eq(plans.teamId, id)).run()
+  if (aliveTasks.length > 0) {
+    await db.update(tasks).set({ deletedAt: now }).where(eq(tasks.teamId, id)).run()
   }
   await db.delete(teamMembers).where(eq(teamMembers.teamId, id)).run()
   await db.delete(teamInvites).where(eq(teamInvites.teamId, id)).run()
   await db.delete(teams).where(eq(teams.id, id)).run()
 
-  return { ok: true, cascade_soft_deleted_plans: alivePlans.length }
+  return { ok: true, cascade_soft_deleted_tasks: aliveTasks.length }
 })
