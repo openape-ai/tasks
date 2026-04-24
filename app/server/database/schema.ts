@@ -19,21 +19,27 @@ export const teamMembers = sqliteTable('team_members', {
   index('idx_tm_email').on(t.userEmail),
 ])
 
-export const plans = sqliteTable('plans', {
+export const tasks = sqliteTable('tasks', {
   id: text('id').primaryKey(),
   teamId: text('team_id').notNull(),
   title: text('title').notNull(),
-  bodyMd: text('body_md').notNull().default(''),
-  status: text('status', { enum: ['draft', 'active', 'done', 'archived'] }).notNull().default('draft'),
+  notes: text('notes').notNull().default(''),
+  status: text('status', { enum: ['open', 'doing', 'done', 'archived'] }).notNull().default('open'),
+  priority: text('priority', { enum: ['low', 'med', 'high'] }),
+  dueAt: integer('due_at'),
+  assigneeEmail: text('assignee_email'),
+  sortOrder: integer('sort_order').notNull().default(0),
   ownerEmail: text('owner_email').notNull(),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
   updatedBy: text('updated_by').notNull(),
+  completedAt: integer('completed_at'),
   deletedAt: integer('deleted_at'),
 }, t => [
-  index('idx_plans_team').on(t.teamId),
-  index('idx_plans_owner').on(t.ownerEmail),
-  index('idx_plans_updated').on(t.updatedAt),
+  index('idx_tasks_team').on(t.teamId),
+  index('idx_tasks_team_status').on(t.teamId, t.status),
+  index('idx_tasks_assignee').on(t.assigneeEmail),
+  index('idx_tasks_updated').on(t.updatedAt),
 ])
 
 export const teamInvites = sqliteTable('team_invites', {

@@ -29,21 +29,27 @@ export default defineNitroPlugin(async () => {
     )`)
     await db.run(sql`CREATE INDEX IF NOT EXISTS idx_tm_email ON team_members(user_email)`)
 
-    await db.run(sql`CREATE TABLE IF NOT EXISTS plans (
+    await db.run(sql`CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY,
       team_id TEXT NOT NULL,
       title TEXT NOT NULL,
-      body_md TEXT NOT NULL DEFAULT '',
-      status TEXT NOT NULL DEFAULT 'draft',
+      notes TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'open',
+      priority TEXT,
+      due_at INTEGER,
+      assignee_email TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
       owner_email TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       updated_by TEXT NOT NULL,
+      completed_at INTEGER,
       deleted_at INTEGER
     )`)
-    await db.run(sql`CREATE INDEX IF NOT EXISTS idx_plans_team ON plans(team_id)`)
-    await db.run(sql`CREATE INDEX IF NOT EXISTS idx_plans_owner ON plans(owner_email)`)
-    await db.run(sql`CREATE INDEX IF NOT EXISTS idx_plans_updated ON plans(updated_at)`)
+    await db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_team ON tasks(team_id)`)
+    await db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_team_status ON tasks(team_id, status)`)
+    await db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_email)`)
+    await db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_updated ON tasks(updated_at)`)
 
     await db.run(sql`CREATE TABLE IF NOT EXISTS team_invites (
       id TEXT PRIMARY KEY,

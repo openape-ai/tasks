@@ -9,7 +9,7 @@ import { createProblemError } from '../../utils/problem'
  * PATCH /api/teams/:id — rename or edit description. Owner-only.
  *
  * Body: { name?: string, description?: string | null }
- * Response: the updated team with member/plan counts (same shape as list).
+ * Response: the updated team (subset of list shape, no counts recomputed).
  */
 export default defineEventHandler(async (event) => {
   const caller = await requireCaller(event)

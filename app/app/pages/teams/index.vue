@@ -10,7 +10,8 @@ interface TeamListItem {
   description: string | null
   role: string
   member_count: number
-  plan_count: number
+  open_task_count: number
+  total_task_count: number
   created_at: number
   updated_at: number
 }
@@ -43,31 +44,23 @@ async function loadTeams() {
     loading.value = false
   }
 }
-
-function formatRelative(ts: number): string {
-  const diff = Math.floor(Date.now() / 1000) - ts
-  if (diff < 60) return 'just now'
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-  return `${Math.floor(diff / 86400)}d ago`
-}
 </script>
 
 <template>
-  <div class="min-h-dvh py-8 px-4">
-    <div class="max-w-4xl mx-auto">
+  <div class="min-h-dvh bg-zinc-950 text-zinc-100 pb-24">
+    <div class="max-w-2xl mx-auto px-4 pt-6">
       <div class="flex items-center justify-between mb-6">
-        <div>
+        <div class="min-w-0">
           <h1 class="text-2xl font-bold">
-            Teams
+            My Lists
           </h1>
-          <p v-if="user" class="text-sm text-gray-500">
+          <p v-if="user" class="text-sm text-zinc-500 truncate">
             {{ user.sub }}
           </p>
         </div>
         <div class="flex gap-2">
           <UButton to="/teams/new" color="primary" icon="i-lucide-plus" size="sm">
-            New team
+            New list
           </UButton>
           <UButton color="neutral" variant="ghost" size="sm" @click="logout">
             Logout
@@ -75,54 +68,47 @@ function formatRelative(ts: number): string {
         </div>
       </div>
 
-      <div v-if="authLoading || loading" class="text-center text-gray-500 mt-10">
+      <div v-if="authLoading || loading" class="text-center text-zinc-500 mt-10">
         Loading…
       </div>
 
       <UAlert v-else-if="error" color="error" :title="error" class="mb-4" />
 
-      <div v-else-if="teams.length === 0" class="text-center py-10 text-gray-500">
+      <div v-else-if="teams.length === 0" class="text-center py-10 text-zinc-500">
+        <UIcon name="i-lucide-list-checks" class="size-10 mx-auto mb-3 opacity-40" />
         <p class="mb-4">
-          You are not in any teams yet.
+          No lists yet.
         </p>
         <UButton to="/teams/new" color="primary" icon="i-lucide-plus">
-          Create your first team
+          Create your first list
         </UButton>
       </div>
 
-      <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <NuxtLink
-          v-for="team in teams"
-          :key="team.id"
-          :to="`/teams/${team.id}`"
-          class="block p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-primary hover:shadow-sm transition"
-        >
-          <div class="flex items-start justify-between">
+      <ul v-else class="divide-y divide-zinc-900">
+        <li v-for="team in teams" :key="team.id">
+          <NuxtLink
+            :to="`/teams/${team.id}`"
+            class="flex items-center gap-3 py-3 min-h-[56px] hover:bg-zinc-900/50 -mx-4 px-4 transition"
+          >
+            <div class="size-9 shrink-0 rounded-full bg-primary-500 flex items-center justify-center">
+              <UIcon name="i-lucide-list-checks" class="size-5 text-white" />
+            </div>
             <div class="min-w-0 flex-1">
               <div class="font-semibold truncate">
                 {{ team.name }}
               </div>
-              <div v-if="team.description" class="text-sm text-gray-500 truncate mt-0.5">
-                {{ team.description }}
+              <div class="text-xs text-zinc-500 truncate">
+                {{ team.member_count }} member{{ team.member_count === 1 ? '' : 's' }}
+                <span v-if="team.role !== 'owner'"> · {{ team.role }}</span>
               </div>
             </div>
-            <UBadge :color="team.role === 'owner' ? 'primary' : 'neutral'" variant="subtle" size="xs">
-              {{ team.role }}
-            </UBadge>
-          </div>
-          <div class="flex items-center gap-3 mt-3 text-xs text-gray-500">
-            <span class="flex items-center gap-1">
-              <UIcon name="i-lucide-users" />
-              {{ team.member_count }}
-            </span>
-            <span class="flex items-center gap-1">
-              <UIcon name="i-lucide-file-text" />
-              {{ team.plan_count }}
-            </span>
-            <span class="ml-auto">{{ formatRelative(team.updated_at) }}</span>
-          </div>
-        </NuxtLink>
-      </div>
+            <div class="text-lg tabular-nums text-zinc-400 pr-1">
+              {{ team.open_task_count }}
+            </div>
+            <UIcon name="i-lucide-chevron-right" class="size-5 text-zinc-700" />
+          </NuxtLink>
+        </li>
+      </ul>
     </div>
   </div>
 </template>
