@@ -21,7 +21,7 @@ import { error } from './output.ts'
 const main = defineCommand({
   meta: {
     name: 'ape-tasks',
-    version: '0.1.0',
+    version: '0.1.1',
     description: [
       'Shared task lists for humans and AI agents — persisted across devices and sessions.',
       '',
