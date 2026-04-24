@@ -5,29 +5,29 @@ import { apiCall } from '../api.ts'
 import { resolveEndpoint } from '../config.ts'
 import { info, printLine } from '../output.ts'
 
-interface PlanRef { id: string, team_id: string }
+interface TaskRef { id: string, team_id: string }
 
 /**
- * Open a plan in the web UI — resolves team_id and launches the platform's
- * default browser. Useful for humans mid-terminal-flow. Headless environments
- * (CI, remote shells) get the URL printed instead.
+ * Open a task's list (team) in the web UI — the list page is the task board,
+ * so there's no per-task URL. Useful for humans mid-terminal-flow. Headless
+ * environments get the URL printed instead of a browser launch.
  *
  * EXAMPLE
  *   $ ape-tasks open 01HXX...
- *   https://tasks.openape.ai/teams/01HYY.../plans/01HXX...
+ *   https://tasks.openape.ai/teams/01HYY...
  *   (browser opens)
  */
 export const openCommand = defineCommand({
-  meta: { name: 'open', description: 'Open a plan in the default browser.' },
+  meta: { name: 'open', description: 'Open a task\u2019s list in the default browser.' },
   args: {
-    planId: { type: 'positional', required: true, description: 'Plan ULID.' },
+    taskId: { type: 'positional', required: true, description: 'Task ULID.' },
     'print-only': { type: 'boolean', description: 'Print the URL without launching a browser.' },
-    endpoint: { type: 'string', description: 'Override plans endpoint.' },
+    endpoint: { type: 'string', description: 'Override tasks endpoint.' },
   },
   async run({ args }) {
     const endpoint = resolveEndpoint(args.endpoint)
-    const plan = await apiCall<PlanRef>('GET', `/api/plans/${args.planId}`, { endpoint })
-    const url = `${endpoint}/teams/${plan.team_id}/plans/${plan.id}`
+    const task = await apiCall<TaskRef>('GET', `/api/tasks/${args.taskId}`, { endpoint })
+    const url = `${endpoint}/teams/${task.team_id}`
     printLine(url)
     if (args['print-only']) return
 

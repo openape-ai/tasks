@@ -10,8 +10,10 @@ import {
   newCommand,
   editCommand,
   statusCommand,
+  doneCommand,
+  reopenCommand,
   rmCommand,
-} from './commands/plans.ts'
+} from './commands/tasks.ts'
 import { docsCommand } from './commands/docs.ts'
 import { openCommand } from './commands/open.ts'
 import { error } from './output.ts'
@@ -19,13 +21,13 @@ import { error } from './output.ts'
 const main = defineCommand({
   meta: {
     name: 'ape-tasks',
-    version: '0.2.1',
+    version: '0.1.0',
     description: [
-      'Living plans for humans and AI agents — persisted across sessions, devices, and hand-offs.',
+      'Shared task lists for humans and AI agents — persisted across devices and sessions.',
       '',
       'First time? `ape-tasks login <email>` (paste token from {endpoint}/cli-login).',
-      'Lost? `ape-tasks docs agent` for the agent reference, or see the Claude skill',
-      'at https://github.com/openape-ai/tasks/blob/main/skills/ape-tasks/SKILL.md.',
+      'Agent reference: `ape-tasks docs agent`. Skill for Claude Code: see',
+      'https://github.com/openape-ai/tasks/blob/main/skills/ape-tasks/SKILL.md.',
     ].join('\n'),
   },
   subCommands: {
@@ -39,6 +41,8 @@ const main = defineCommand({
     new: newCommand,
     edit: editCommand,
     status: statusCommand,
+    done: doneCommand,
+    reopen: reopenCommand,
     rm: rmCommand,
     open: openCommand,
     docs: docsCommand,

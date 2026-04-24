@@ -1,7 +1,7 @@
 {
   "name": "@openape/ape-tasks",
-  "version": "0.3.0",
-  "description": "CLI for tasks.openape.ai \u2014 cross-device plan management for humans and AI agents",
+  "version": "0.1.0",
+  "description": "CLI for tasks.openape.ai \u2014 shared task lists for humans and AI agents",
   "type": "module",
   "license": "MIT",
   "bin": {
@@ -43,7 +43,8 @@
     "node": ">=20"
   },
   "keywords": [
-    "plans",
+    "tasks",
+    "todo",
     "openape",
     "cli",
     "agent",

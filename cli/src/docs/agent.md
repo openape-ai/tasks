@@ -2,7 +2,7 @@
 
 This CLI is the primary interface for AI agents working with tasks.openape.ai.
 Humans can use the webapp; agents use these commands to read, create, update,
-and share plans across devices and conversations.
+and share tasks across devices and conversations.
 
 ## First-time setup
 
@@ -12,58 +12,77 @@ ape-tasks login patrick@example.com
 ```
 
 `ape-tasks login` prints a URL to open in a browser. The user signs in via
-DDISA at their identity provider, clicks "Generate CLI token" on the plans
+DDISA at their identity provider, clicks "Generate CLI token" on the tasks
 page, copies the token, and pastes it into the CLI. The token is stored at
 `~/.openape/auth-tasks.json` (chmod 600) and is valid for 30 days.
 
-## Discover teams and plans
+## Discover lists and tasks
 
 ```
 ape-tasks whoami --json
 # {"email":"patrick@example.com","act":"human","endpoint":"https://tasks.openape.ai"}
 
 ape-tasks teams --json
-# [{"id":"01H...","name":"Delta Mind","role":"owner","member_count":3,"plan_count":7,...}]
+# [{"id":"01H...","name":"Delta Mind","role":"owner","member_count":3,"open_task_count":4,"total_task_count":12,...}]
 
 ape-tasks list --json
-# [{"id":"01H...","team_id":"01H...","title":"Migrate auth","status":"active",...}]
+# [{"id":"01H...","team_id":"01H...","title":"Migrate auth","status":"open","priority":"high",...}]
 
-ape-tasks list --team 01H... --status active --json
+ape-tasks list --team 01H... --status open,doing --json
 ```
 
-## Read a plan
+## Read a task
 
-Default output is Markdown to stdout (for piping into other tools). Use `--json`
-for the structured object including metadata.
+Default output is a human-readable summary. Use `--json` for the full object.
 
 ```
 ape-tasks show 01H...
 ape-tasks show 01H... --json | jq .status
 ```
 
-## Create or update plans
+## Create tasks
 
 ```
-# Create — opens $EDITOR. Use --body-from-stdin or --body-from-file for scripts.
-ape-tasks new --team 01H... --title "My new plan"
-echo '# Plan body' | ape-tasks new --team 01H... --title "Scripted" --body-from-stdin
-ape-tasks new --team 01H... --title "From file" --body-from-file plan.md
+# Minimum: title + list. Team can be omitted once `teams use <id>` is set.
+ape-tasks new --team 01H... --title "Migrate auth"
 
-# Multi-line inline body via heredoc — no tempfile needed:
-ape-tasks new --team 01H... --title "Inline" --body-from-stdin <<'EOF'
-# Plan
-- step one
-- step two
+# With fields:
+ape-tasks new --team 01H... --title "Ship PR" \
+  --priority high --due +2d --assignee someone@example.com \
+  --notes "Focus: auth refactor, revert if Sentry spikes."
+
+# Inline notes via heredoc — no tempfile needed:
+ape-tasks new --team 01H... --title "Release notes" --notes-from-stdin <<'EOF'
+- bump version
+- changelog entry
+- announce in #releases
 EOF
 
-# Default team: set it once, skip --team everywhere after:
+# Set an active list once, then omit --team:
 ape-tasks teams use 01H...
-ape-tasks new --title "No --team needed" --body-from-stdin <<<"# body"
+ape-tasks new --title "No --team needed"
 
-# Update. Same body input flags; --title and --status are patch-style.
-ape-tasks edit 01H... --body-from-file updated.md
-ape-tasks edit 01H... --status done
-ape-tasks status 01H... active
+# Get just the id for scripting:
+ID=$(ape-tasks new --title "Bot check" --id-only)
+```
+
+## Update tasks
+
+```
+# Patch any field. Others untouched.
+ape-tasks edit 01H... --title "Call the dentist 3pm"
+ape-tasks edit 01H... --priority high --due +1d
+ape-tasks edit 01H... --assignee none           # clear assignee
+ape-tasks edit 01H... --due none                # clear due
+ape-tasks edit 01H... --notes-from-file updates.md
+
+# Status shortcuts
+ape-tasks status 01H... doing
+ape-tasks done 01H...
+ape-tasks reopen 01H...
+
+# Soft delete
+ape-tasks rm 01H...
 ```
 
 ## Invite other agents or humans
@@ -72,57 +91,61 @@ ape-tasks status 01H... active
 ape-tasks teams invite 01H... --max-uses 1 --expires-in 24h --note "agent onboarding"
 # → https://tasks.openape.ai/invite?t=eyJhbGc...
 
-# The other side accepts with URL or raw token
 ape-tasks accept https://tasks.openape.ai/invite?t=eyJhbGc...
 ```
 
-This is how multi-agent collaboration works: one agent generates an invite URL,
-passes it to the other agent (via message, file, or stdin), and the other
-agent runs `ape-tasks accept <url>`. Both agents are then members of the same
-team and can see each other's plans.
+One agent generates an invite URL, passes it to the other (message, file,
+stdin), the other runs `ape-tasks accept <url>`. Both are then members of
+the same team and see each other's tasks.
 
-## Plan object schema
+## Task object schema
 
 ```json
 {
-  "id": "01HXX...",
-  "team_id": "01HXX...",
-  "title": "...",
-  "body_md": "# Markdown body\n...",
-  "status": "draft" | "active" | "done" | "archived",
-  "owner_email": "creator@example.com",
-  "created_at": 1735689600,
-  "updated_at": 1735689600,
-  "updated_by": "last-editor@example.com",
-  "caller_role": "owner" | "editor" | "viewer"
+  "id":              "01HXX...",
+  "team_id":         "01HXX...",
+  "title":           "Migrate auth",
+  "notes":           "...optional plain or Markdown...",
+  "status":          "open" | "doing" | "done" | "archived",
+  "priority":        null | "low" | "med" | "high",
+  "due_at":          null,
+  "assignee_email":  null,
+  "sort_order":      7,
+  "owner_email":     "creator@example.com",
+  "created_at":      1735689600,
+  "updated_at":      1735689600,
+  "updated_by":      "last-editor@example.com",
+  "completed_at":    null
 }
 ```
 
-`updated_at` and `created_at` are unix seconds. `caller_role` is included on
-detail responses only and tells you whether you may edit.
+All timestamps are unix seconds.
 
 ## Error codes
 
 | HTTP | Meaning |
 |------|---------|
-| 400  | Bad input (missing field, invalid status, bad duration). Read `.title` in the JSON response. |
+| 400  | Bad input (missing field, invalid status/priority, unparseable --due). Read `.title` in the JSON response. |
 | 401  | Not logged in. Run `ape-tasks login <email>`. |
 | 403  | Not a team member, or role insufficient (viewers cannot edit/create). |
-| 404  | Team or plan not found, or soft-deleted. |
+| 404  | Team or task not found, or soft-deleted. |
 | 410  | Invite gone (expired, revoked, or out of uses). |
 | 500+ | Server error. Retry later; include `endpoint` in bug reports. |
 
-Error bodies follow RFC 7807-ish shape: `{ "title": "<human message>" }`. The
-CLI echoes `title` to stderr and exits non-zero.
+Error bodies follow RFC 7807-ish shape: `{ "title": "<human message>" }`.
+The CLI echoes `title` to stderr and exits non-zero.
 
 ## Scripting tips
 
-- `--json` is stable. Version bumps that change JSON shape are major-version.
-- `--quiet` silences progress messages but still sends errors to stderr.
-- Exit code 0 = success; non-zero = error. Status codes are surfaced in stderr
-  for debugging but the process exit code is the contract.
+- `--json` is stable. Shape changes are major-version.
+- `--quiet` silences progress, errors still go to stderr.
+- Exit code 0 = success, non-zero = error.
 - All timestamps are unix seconds (not milliseconds).
-- ULIDs are sortable. `ape-tasks list --json | jq 'sort_by(.updated_at) | reverse'`
-  works even though the API already sorts by updated_at desc.
-- `--endpoint <url>` overrides the endpoint (useful in tests, or for a dev
-  server). Default is `https://tasks.openape.ai` or `APE_TASKS_ENDPOINT`.
+- ULIDs are sortable. `ape-tasks list --json | jq 'sort_by(.sort_order)'`
+  works, although the API already sorts by `sort_order`.
+- `--endpoint <url>` overrides the endpoint (tests, dev server). Default:
+  `https://tasks.openape.ai` or `APE_TASKS_ENDPOINT`.
+- `--due` accepts ISO 8601 or shorthand `+30m`, `+2h`, `+1d`, `+2w`. Use
+  `none` or empty string to clear.
+- `--priority low|med|high` or `none` to clear.
+- `--assignee email` or `none` to clear.
