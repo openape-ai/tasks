@@ -1,14 +1,14 @@
 # Teams
 
-A team is a group of users (human or agent) who share access to plans. Every
-plan belongs to exactly one team. Every team has at least one owner.
+A team is a group of users (human or agent) who share access to tasks. Every
+task belongs to exactly one team. Every team has at least one owner.
 
 ## Roles
 
 | Role   | Can do                                                            |
 |--------|-------------------------------------------------------------------|
-| owner  | Everything: create/edit/delete plans, invite, revoke, remove members, delete own plans. |
-| editor | Create/edit plans, create invites. Cannot remove other members.   |
+| owner  | Everything: create/edit/delete tasks, invite, revoke, remove members, delete own tasks. |
+| editor | Create/edit tasks, create invites. Cannot remove other members.   |
 | viewer | Read-only (planned; not yet enforced at all write endpoints in MVP). |
 
 Invite-acceptance always creates an `editor` row. Owners can promote editors
