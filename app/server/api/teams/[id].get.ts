@@ -1,7 +1,7 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import { defineEventHandler, getRouterParam } from 'h3'
 import { useDb } from '../../database/drizzle'
-import { plans, teamMembers, teams } from '../../database/schema'
+import { tasks, teamMembers, teams } from '../../database/schema'
 import { requireCaller } from '../../utils/require-auth'
 import { createProblemError } from '../../utils/problem'
 
@@ -11,7 +11,7 @@ import { createProblemError } from '../../utils/problem'
  * Response: {
  *   id, name, description, created_at,
  *   members: [{ email, role, joined_at }],
- *   plans: [{ id, title, status, owner_email, updated_at, updated_by }]  // most recent first
+ *   task_count: { open, doing, done, archived, total }
  * }
  */
 export default defineEventHandler(async (event) => {
@@ -21,7 +21,6 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
 
-  // Membership check first
   const membership = await db
     .select()
     .from(teamMembers)
@@ -33,26 +32,22 @@ export default defineEventHandler(async (event) => {
   if (!team) throw createProblemError({ status: 404, title: 'Team not found' })
 
   const members = await db.select().from(teamMembers).where(eq(teamMembers.teamId, id)).all()
-  const planRows = await db
+  const taskRows = await db
     .select()
-    .from(plans)
-    .where(and(eq(plans.teamId, id), isNull(plans.deletedAt)))
+    .from(tasks)
+    .where(and(eq(tasks.teamId, id), isNull(tasks.deletedAt)))
     .all()
-  planRows.sort((a, b) => b.updatedAt - a.updatedAt)
+
+  const counts = { open: 0, doing: 0, done: 0, archived: 0, total: taskRows.length }
+  for (const t of taskRows) counts[t.status]++
 
   return {
     id: team.id,
     name: team.name,
     description: team.description,
+    archived_at: team.archivedAt,
     created_at: team.createdAt,
     members: members.map(m => ({ email: m.userEmail, role: m.role, joined_at: m.joinedAt })),
-    plans: planRows.map(p => ({
-      id: p.id,
-      title: p.title,
-      status: p.status,
-      owner_email: p.ownerEmail,
-      updated_at: p.updatedAt,
-      updated_by: p.updatedBy,
-    })),
+    task_count: counts,
   }
 })
