@@ -8,7 +8,10 @@ export interface ApiError extends Error {
 }
 
 function createApiError(status: number, title: string, detail?: string): ApiError {
-  const err = new Error(title) as ApiError
+  // citty surfaces only `error.message` on rejection, so we fold `detail` in
+  // when present — otherwise the extra hint is never shown to the user.
+  const message = detail ? `${title}\n${detail}` : title
+  const err = new Error(message) as ApiError
   err.status = status
   err.title = title
   err.detail = detail
