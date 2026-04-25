@@ -48,8 +48,9 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const sub = result.claims.sub as string | undefined
-  if (!sub || typeof sub !== 'string' || !sub.includes('@')) {
+  const claims = result.claims as Record<string, unknown>
+  const sub = claims.sub
+  if (typeof sub !== 'string' || !sub.includes('@')) {
     throw createProblemError({
       status: 401,
       title: 'subject_token has no usable subject claim',
@@ -57,7 +58,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const act = result.claims.act === 'agent' ? 'agent' : 'human'
+  const act = claims.act === 'agent' ? 'agent' : 'human'
 
   const { token, expiresAt } = await signCliToken({
     email: sub,
