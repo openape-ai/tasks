@@ -20,6 +20,10 @@ interface CreateBody {
   priority?: string
   due_at?: number | null
   assignee_email?: string | null
+  remind_at?: number | null
+  reminder_max?: number
+  context_url?: string | null
+  context_summary?: string | null
 }
 
 /**
@@ -54,6 +58,24 @@ export default defineEventHandler(async (event) => {
   const dueAt = typeof body?.due_at === 'number' ? body.due_at : null
   const assigneeEmail = body?.assignee_email?.trim() || null
 
+  const now0 = Math.floor(Date.now() / 1000)
+  const remindAt = typeof body?.remind_at === 'number' ? body.remind_at : null
+  if (remindAt !== null && remindAt < now0 - 60) {
+    // Allow up to a minute of clock skew; reject anything substantially in the past.
+    throw createProblemError({ status: 400, title: 'remind_at must be in the future' })
+  }
+  const reminderMax = (typeof body?.reminder_max === 'number' && body.reminder_max >= 0 && body.reminder_max <= 50)
+    ? Math.floor(body.reminder_max)
+    : 5
+  const contextUrl = body?.context_url?.trim() || null
+  if (contextUrl && contextUrl.length > 2048) {
+    throw createProblemError({ status: 400, title: 'context_url must be ≤ 2048 chars' })
+  }
+  const contextSummary = body?.context_summary?.trim() || null
+  if (contextSummary && contextSummary.length > 1000) {
+    throw createProblemError({ status: 400, title: 'context_summary must be ≤ 1000 chars' })
+  }
+
   const db = useDb()
   const membership = await db
     .select()
@@ -86,6 +108,10 @@ export default defineEventHandler(async (event) => {
     dueAt,
     assigneeEmail,
     sortOrder,
+    remindAt,
+    reminderMax,
+    contextUrl,
+    contextSummary,
     ownerEmail: caller.email,
     createdAt: now,
     updatedAt: now,

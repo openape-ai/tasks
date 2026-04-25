@@ -20,6 +20,12 @@ interface PatchBody {
   due_at?: number | null
   assignee_email?: string | null
   sort_order?: number
+  remind_at?: number | null
+  reminder_max?: number
+  context_url?: string | null
+  context_summary?: string | null
+  /** Reset reminder_count + last_reminder_at — useful for snooze UX. */
+  reset_reminders?: boolean
 }
 
 type TaskPatch = Partial<{
@@ -31,6 +37,12 @@ type TaskPatch = Partial<{
   assigneeEmail: string | null
   sortOrder: number
   completedAt: number | null
+  remindAt: number | null
+  reminderMax: number
+  contextUrl: string | null
+  contextSummary: string | null
+  reminderCount: number
+  lastReminderAt: number | null
 }>
 
 /**
@@ -75,6 +87,40 @@ export default defineEventHandler(async (event) => {
   }
   if (body.sort_order !== undefined && Number.isInteger(body.sort_order)) {
     patch.sortOrder = body.sort_order
+  }
+  if (body.remind_at !== undefined) {
+    if (body.remind_at !== null && (typeof body.remind_at !== 'number' || !Number.isFinite(body.remind_at))) {
+      throw createProblemError({ status: 400, title: 'remind_at must be a unix-seconds number or null' })
+    }
+    patch.remindAt = body.remind_at
+    // Setting a new remind_at resets the escalation counter so the worker
+    // sends a fresh first mail instead of treating the rescheduled time
+    // as a continuation.
+    if (body.remind_at !== null) {
+      patch.reminderCount = 0
+      patch.lastReminderAt = null
+    }
+  }
+  if (typeof body.reminder_max === 'number' && body.reminder_max >= 0 && body.reminder_max <= 50) {
+    patch.reminderMax = Math.floor(body.reminder_max)
+  }
+  if (body.context_url !== undefined) {
+    const url = body.context_url?.trim() || null
+    if (url && url.length > 2048) {
+      throw createProblemError({ status: 400, title: 'context_url must be ≤ 2048 chars' })
+    }
+    patch.contextUrl = url
+  }
+  if (body.context_summary !== undefined) {
+    const summary = body.context_summary?.trim() || null
+    if (summary && summary.length > 1000) {
+      throw createProblemError({ status: 400, title: 'context_summary must be ≤ 1000 chars' })
+    }
+    patch.contextSummary = summary
+  }
+  if (body.reset_reminders) {
+    patch.reminderCount = 0
+    patch.lastReminderAt = null
   }
 
   if (Object.keys(patch).length === 0) {
