@@ -21,11 +21,12 @@ import { error } from './output.ts'
 const main = defineCommand({
   meta: {
     name: 'ape-tasks',
-    version: '0.1.1',
+    version: '1.0.0',
     description: [
       'Shared task lists for humans and AI agents — persisted across devices and sessions.',
       '',
-      'First time? `ape-tasks login <email>` (paste token from {endpoint}/cli-login).',
+      'First time? `apes login <email>` once on this device. ape-tasks uses the',
+      'unified apes session — same login covers ape-plans and any future OpenApe CLI.',
       'Agent reference: `ape-tasks docs agent`. Skill for Claude Code: see',
       'https://github.com/openape-ai/tasks/blob/main/skills/ape-tasks/SKILL.md.',
     ].join('\n'),
