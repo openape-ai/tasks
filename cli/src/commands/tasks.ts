@@ -19,6 +19,12 @@ interface Task {
   due_at: number | null
   assignee_email: string | null
   sort_order: number
+  remind_at: number | null
+  reminder_count: number
+  last_reminder_at: number | null
+  reminder_max: number
+  context_url: string | null
+  context_summary: string | null
   owner_email: string
   created_at: number
   updated_at: number
@@ -80,6 +86,36 @@ function parsePriority(v: unknown): TaskPriority | null | undefined {
 }
 
 function parseAssignee(v: unknown): string | null | undefined {
+  if (v === undefined) return undefined
+  const s = String(v).trim()
+  if (s === '' || s === 'none' || s === 'clear') return null
+  return s
+}
+
+/**
+ * Parse --remind-at. Same grammar as --due (ISO 8601 or +N{m|h|d|w}); `none`/empty
+ * clears, undefined skips. We could integrate `chrono-node` for natural language
+ * later, but for v1 the shorthand keeps the dep surface tiny.
+ */
+function parseRemindAt(v: unknown): number | null | undefined {
+  if (v === undefined) return undefined
+  const s = String(v).trim()
+  if (s === '' || s === 'none' || s === 'clear') return null
+  const rel = s.match(/^\+(\d+)(m|h|d|w)$/i)
+  if (rel) {
+    const n = Number(rel[1])
+    const unit = rel[2]!.toLowerCase()
+    const sec = { m: 60, h: 3600, d: 86400, w: 604800 }[unit] ?? 0
+    return Math.floor(Date.now() / 1000) + n * sec
+  }
+  const ms = Date.parse(s)
+  if (!Number.isFinite(ms)) {
+    throw createApiError(400, `Invalid --remind-at "${s}"`, 'Use ISO 8601 (2026-05-01T09:00) or shorthand (+2h, +1d, +30m, +2w), or "none" to clear.')
+  }
+  return Math.floor(ms / 1000)
+}
+
+function parseTextOrClear(v: unknown): string | null | undefined {
   if (v === undefined) return undefined
   const s = String(v).trim()
   if (s === '' || s === 'none' || s === 'clear') return null
@@ -205,6 +241,14 @@ export const showCommand = defineCommand({
     if (t.priority) printLine(`  priority:  ${t.priority}`)
     if (t.due_at) printLine(`  due:       ${new Date(t.due_at * 1000).toISOString()}`)
     if (t.assignee_email) printLine(`  assignee:  ${t.assignee_email}`)
+    if (t.remind_at) {
+      const escSuffix = t.reminder_count > 0
+        ? ` (sent ${t.reminder_count}/${t.reminder_max}${t.last_reminder_at ? `, last ${new Date(t.last_reminder_at * 1000).toISOString()}` : ''})`
+        : ''
+      printLine(`  remind:    ${new Date(t.remind_at * 1000).toISOString()}${escSuffix}`)
+    }
+    if (t.context_url) printLine(`  context:   ${t.context_url}`)
+    if (t.context_summary) printLine(`  about:     ${t.context_summary}`)
     printLine(`  owner:     ${t.owner_email}`)
     printLine(`  created:   ${new Date(t.created_at * 1000).toISOString()}`)
     printLine(`  updated:   ${new Date(t.updated_at * 1000).toISOString()} by ${t.updated_by}`)
@@ -245,6 +289,10 @@ export const newCommand = defineCommand({
     priority: { type: 'string', description: 'low|med|high (default none).' },
     due: { type: 'string', description: 'ISO 8601 or shorthand (+2h, +1d, +30m, +2w).' },
     assignee: { type: 'string', description: 'Assignee email.' },
+    'remind-at': { type: 'string', description: 'When to email the assignee a reminder. ISO 8601 or shorthand (+2h, +1d, +30m, +2w).' },
+    'reminder-max': { type: 'string', description: 'Max reminder mails before silence (default 5).' },
+    'context-url': { type: 'string', description: 'Deep-link back to the source (e.g. an Outlook web URL).' },
+    'context-summary': { type: 'string', description: 'One-liner shown in the reminder mail (e.g. "Mail from X: subject Y").' },
     json: { type: 'boolean', description: 'JSON output.' },
     'id-only': { type: 'boolean', description: 'Print only the new task id.' },
     endpoint: { type: 'string', description: 'Override tasks endpoint.' },
@@ -259,12 +307,22 @@ export const newCommand = defineCommand({
     const priority = parsePriority(args.priority)
     const dueAt = parseDue(args.due)
     const assignee = parseAssignee(args.assignee)
+    const remindAt = parseRemindAt(args['remind-at'])
+    const contextUrl = parseTextOrClear(args['context-url'])
+    const contextSummary = parseTextOrClear(args['context-summary'])
     const notes = await resolveNotesInput(args) ?? ''
 
     const body: Record<string, unknown> = { title: args.title, notes, status }
     if (priority !== undefined) body.priority = priority
     if (dueAt !== undefined) body.due_at = dueAt
     if (assignee !== undefined) body.assignee_email = assignee
+    if (remindAt !== undefined) body.remind_at = remindAt
+    if (contextUrl !== undefined) body.context_url = contextUrl
+    if (contextSummary !== undefined) body.context_summary = contextSummary
+    if (typeof args['reminder-max'] === 'string') {
+      const n = Number(args['reminder-max'])
+      if (Number.isInteger(n) && n >= 0 && n <= 50) body.reminder_max = n
+    }
 
     const t = await apiCall<Task>('POST', `/api/teams/${teamId}/tasks`, {
       endpoint: args.endpoint,
@@ -301,6 +359,11 @@ export const editCommand = defineCommand({
     notes: { type: 'string', description: 'New notes (replaces current).' },
     'notes-from-stdin': { type: 'boolean', description: 'Read notes from stdin.' },
     'notes-from-file': { type: 'string', description: 'Read notes from a file.' },
+    'remind-at': { type: 'string', description: 'When to email the assignee a reminder. ISO 8601 / shorthand (+2h, +1d), or "none" to clear. Setting a new value also resets the escalation counter.' },
+    'reminder-max': { type: 'string', description: 'Max reminder mails before silence.' },
+    'context-url': { type: 'string', description: 'Deep-link back to the source, or "none" to clear.' },
+    'context-summary': { type: 'string', description: 'One-liner shown in the reminder mail, or "none" to clear.' },
+    'reset-reminders': { type: 'boolean', description: 'Reset reminder_count + last_reminder_at without changing remind_at (snooze UX).' },
     json: { type: 'boolean', description: 'JSON output.' },
     endpoint: { type: 'string', description: 'Override tasks endpoint.' },
   },
@@ -319,6 +382,17 @@ export const editCommand = defineCommand({
     if (due !== undefined) patch.due_at = due
     const assignee = parseAssignee(args.assignee)
     if (assignee !== undefined) patch.assignee_email = assignee
+    const remindAt = parseRemindAt(args['remind-at'])
+    if (remindAt !== undefined) patch.remind_at = remindAt
+    const contextUrl = parseTextOrClear(args['context-url'])
+    if (contextUrl !== undefined) patch.context_url = contextUrl
+    const contextSummary = parseTextOrClear(args['context-summary'])
+    if (contextSummary !== undefined) patch.context_summary = contextSummary
+    if (typeof args['reminder-max'] === 'string') {
+      const n = Number(args['reminder-max'])
+      if (Number.isInteger(n) && n >= 0 && n <= 50) patch.reminder_max = n
+    }
+    if (args['reset-reminders']) patch.reset_reminders = true
     const notes = await resolveNotesInput(args)
     if (notes !== undefined) patch.notes = notes
 

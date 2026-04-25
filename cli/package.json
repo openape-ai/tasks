@@ -1,6 +1,6 @@
 {
   "name": "@openape/ape-tasks",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "CLI for tasks.openape.ai \u2014 shared task lists for humans and AI agents",
   "type": "module",
   "license": "MIT",
