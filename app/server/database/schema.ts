@@ -29,6 +29,17 @@ export const tasks = sqliteTable('tasks', {
   dueAt: integer('due_at'),
   assigneeEmail: text('assignee_email'),
   sortOrder: integer('sort_order').notNull().default(0),
+  // Reminder / Wiedervorlage. `remindAt` triggers the worker to email the
+  // assignee; if the task stays open past `lastReminderAt + 24h`, it
+  // escalates with another mail until `reminderCount == reminderMax`.
+  // `contextUrl` / `contextSummary` are presentation-only — typically a
+  // deep-link back to the source (e.g. an Outlook web URL for a triaged mail).
+  remindAt: integer('remind_at'),
+  reminderCount: integer('reminder_count').notNull().default(0),
+  lastReminderAt: integer('last_reminder_at'),
+  reminderMax: integer('reminder_max').notNull().default(5),
+  contextUrl: text('context_url'),
+  contextSummary: text('context_summary'),
   ownerEmail: text('owner_email').notNull(),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
@@ -40,6 +51,8 @@ export const tasks = sqliteTable('tasks', {
   index('idx_tasks_team_status').on(t.teamId, t.status),
   index('idx_tasks_assignee').on(t.assigneeEmail),
   index('idx_tasks_updated').on(t.updatedAt),
+  // Hot index for the reminder worker — only rows with `remind_at` set.
+  index('idx_tasks_remind_at').on(t.remindAt),
 ])
 
 export const teamInvites = sqliteTable('team_invites', {
