@@ -1,5 +1,6 @@
+import { getAuthorizedBearer, NotLoggedInError } from '@openape/cli-auth'
 import { ofetch, FetchError } from 'ofetch'
-import { getActiveSession, resolveEndpoint } from './config.ts'
+import { resolveEndpoint } from './config.ts'
 
 export interface ApiError extends Error {
   status: number
@@ -18,10 +19,24 @@ function createApiError(status: number, title: string, detail?: string): ApiErro
   return err
 }
 
+function audForEndpoint(endpoint: string): string {
+  try {
+    return new URL(endpoint).host
+  }
+  catch {
+    return 'tasks.openape.ai'
+  }
+}
+
 /**
- * Call the tasks.openape.ai API with bearer auth. Resolves endpoint from CLI
- * state; overridable via `--endpoint <url>`. Throws ApiError with RFC-7807-ish
- * shape on non-2xx. Requires an active session unless `opts.auth === false`.
+ * Call the tasks.openape.ai API with bearer auth. Auth is delegated to
+ * `@openape/cli-auth.getAuthorizedBearer`, which:
+ *   1. Returns a cached SP-token if still valid
+ *   2. Otherwise refreshes the IdP token and exchanges it for a fresh SP
+ *      token via `${endpoint}/api/cli/exchange`
+ *
+ * The user must have run `apes login` once on this device. ape-tasks no
+ * longer manages its own login flow.
  */
 export async function apiCall<T = unknown>(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
@@ -37,15 +52,27 @@ export async function apiCall<T = unknown>(
   const headers: Record<string, string> = { Accept: 'application/json' }
 
   if (opts.auth !== false) {
-    const session = getActiveSession(opts.endpoint)
-    if (!session) {
+    try {
+      headers.Authorization = await getAuthorizedBearer({
+        endpoint,
+        aud: audForEndpoint(endpoint),
+      })
+    }
+    catch (err: unknown) {
+      if (err instanceof NotLoggedInError) {
+        throw createApiError(
+          401,
+          'Not logged in',
+          `Run \`apes login <email>\` once on this device — ape-tasks now uses the unified apes session (endpoint: ${endpoint}).`,
+        )
+      }
+      const e = err as { status?: number, title?: string, hint?: string, message?: string }
       throw createApiError(
-        401,
-        'Not logged in',
-        `Run \`ape-tasks login <email>\` first (endpoint: ${endpoint}).`,
+        e.status ?? 0,
+        e.title ?? e.message ?? 'Auth failed',
+        e.hint,
       )
     }
-    headers.Authorization = `Bearer ${session.token}`
   }
 
   try {

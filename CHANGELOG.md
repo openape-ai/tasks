@@ -2,6 +2,36 @@
 
 All notable changes to `@openape/ape-tasks` (CLI) and the `tasks.openape.ai` app are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
+## [CLI 1.0.0] — 2026-04-25
+
+### BREAKING — unified login via `apes`
+
+- **`ape-tasks login` is gone.** Auth is now shared with every other OpenApe CLI (ape-plans, upcoming ape-secrets / ape-seeds) via `@openape/cli-auth`. Run `apes login <email>` **once** on a device; `ape-tasks` works from then on.
+- **`ape-tasks login` is a stub** that prints the migration hint and exits 1.
+- **`ape-tasks logout`** now clears the cached SP-token at `~/.config/apes/sp-tokens/tasks.openape.ai.json`. Pass `--legacy` to also delete the pre-1.0 `~/.openape/auth-tasks.json` file.
+- Pre-1.0 `~/.openape/auth-tasks.json` files are no longer read.
+
+### How it works under the hood
+
+- New dependency: `@openape/cli-auth@^0.2.3`.
+- API calls go through `getAuthorizedBearer`: cached SP-token if valid (60 s skew), otherwise refresh IdP token via OIDC and exchange it at `${endpoint}/api/cli/exchange` (the endpoint added in [PR #6](https://github.com/openape-ai/tasks/pull/6)) for a 30-day SP-scoped token.
+- The exchange endpoint verifies the IdP token via JWKS against `id.openape.ai` with `expectedAud='apes-cli'`.
+
+### Migration
+
+```bash
+# Old (still works on 0.x):
+ape-tasks login patrick@example.com
+# New (1.0+):
+apes login patrick@example.com
+ape-tasks list   # works
+```
+
+If you have an `~/.openape/auth-tasks.json` from before:
+```bash
+ape-tasks logout --legacy
+```
+
 ## [CLI 0.1.1] — 2026-04-24
 
 - **`login --token <value>`** — pass the CLI token directly instead of the
