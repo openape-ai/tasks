@@ -48,7 +48,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const claims = result.claims as Record<string, unknown>
+  const claims = result.claims as unknown as Record<string, unknown>
   const sub = claims.sub
   if (typeof sub !== 'string' || !sub.includes('@')) {
     throw createProblemError({
