@@ -39,6 +39,12 @@ export default defineNitroPlugin(async () => {
       due_at INTEGER,
       assignee_email TEXT,
       sort_order INTEGER NOT NULL DEFAULT 0,
+      remind_at INTEGER,
+      reminder_count INTEGER NOT NULL DEFAULT 0,
+      last_reminder_at INTEGER,
+      reminder_max INTEGER NOT NULL DEFAULT 5,
+      context_url TEXT,
+      context_summary TEXT,
       owner_email TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
@@ -46,10 +52,25 @@ export default defineNitroPlugin(async () => {
       completed_at INTEGER,
       deleted_at INTEGER
     )`)
+    // In-place upgrades for pre-reminder deploys. SQLite has no IF NOT EXISTS
+    // for columns so we wrap each ALTER and swallow the "duplicate column"
+    // error idempotently.
+    for (const stmt of [
+      sql`ALTER TABLE tasks ADD COLUMN remind_at INTEGER`,
+      sql`ALTER TABLE tasks ADD COLUMN reminder_count INTEGER NOT NULL DEFAULT 0`,
+      sql`ALTER TABLE tasks ADD COLUMN last_reminder_at INTEGER`,
+      sql`ALTER TABLE tasks ADD COLUMN reminder_max INTEGER NOT NULL DEFAULT 5`,
+      sql`ALTER TABLE tasks ADD COLUMN context_url TEXT`,
+      sql`ALTER TABLE tasks ADD COLUMN context_summary TEXT`,
+    ]) {
+      try { await db.run(stmt) }
+      catch { /* column already present */ }
+    }
     await db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_team ON tasks(team_id)`)
     await db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_team_status ON tasks(team_id, status)`)
     await db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_email)`)
     await db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_updated ON tasks(updated_at)`)
+    await db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_remind_at ON tasks(remind_at)`)
 
     await db.run(sql`CREATE TABLE IF NOT EXISTS team_invites (
       id TEXT PRIMARY KEY,
