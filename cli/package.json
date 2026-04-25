@@ -1,6 +1,6 @@
 {
   "name": "@openape/ape-tasks",
-  "version": "0.1.1",
+  "version": "1.0.0",
   "description": "CLI for tasks.openape.ai \u2014 shared task lists for humans and AI agents",
   "type": "module",
   "license": "MIT",
@@ -29,6 +29,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@openape/cli-auth": "^0.2.3",
     "@openape/core": "^0.11.0",
     "citty": "^0.1.6",
     "jose": "^5.9.6",

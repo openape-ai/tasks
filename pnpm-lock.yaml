@@ -56,6 +56,9 @@ importers:
 
   cli:
     dependencies:
+      '@openape/cli-auth':
+        specifier: ^0.2.3
+        version: 0.2.3
       '@openape/core':
         specifier: ^0.11.0
         version: 0.11.0
@@ -701,6 +704,10 @@ packages:
     peerDependenciesMeta:
       h3:
         optional: true
+
+  '@openape/cli-auth@0.2.3':
+    resolution: {integrity: sha512-dI8HLYMp5lAww0WOFEM4wBP9lqudpHlItfs7zQ5YqUwJVUQTUqodGvUCoeEpkkiMzTL2dMPNy45UkO6cGc0BUg==}
+    engines: {node: '>=20'}
 
   '@openape/core@0.11.0':
     resolution: {integrity: sha512-LPSS0CIdpS6hwiT74O+JpFiGj/SLCHvZppcSrt0ylPu02nXb6q90M2rHJagkg/xU7ofpOwaWHBXG+YL1FuQECw==}
@@ -5686,6 +5693,10 @@ snapshots:
       h3: 1.15.11
     transitivePeerDependencies:
       - encoding
+
+  '@openape/cli-auth@0.2.3':
+    dependencies:
+      ofetch: 1.5.1
 
   '@openape/core@0.11.0':
     dependencies:
