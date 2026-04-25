@@ -2,6 +2,16 @@
 
 All notable changes to `@openape/ape-tasks` (CLI) and the `tasks.openape.ai` app are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
+## [CLI 1.1.0] — 2026-04-25
+
+### Added — Reminder / Wiedervorlage fields (M2 of [plan 01KQ33AQDA64KQEKAHRT455W02](https://plans.openape.ai/p/01KQ33AQDA64KQEKAHRT455W02))
+
+- **`new`** + **`edit`** accept `--remind-at`, `--reminder-max`, `--context-url`, `--context-summary`. `--remind-at` shares the grammar of `--due` (ISO 8601 or shorthand `+30m`/`+2h`/`+1d`/`+2w`; `none` to clear). On `edit`, setting a new `--remind-at` automatically resets the escalation counter.
+- **`edit --reset-reminders`** — snooze UX. Clears `reminder_count` + `last_reminder_at` without changing `remind_at`.
+- **`show`** prints the new fields (remind, sent/max counter, last_reminder_at, context_url, context_summary).
+
+The reminder worker (M3) lands separately. Until then setting `remind_at` is harmless — no mails go out yet.
+
 ## [CLI 1.0.0] — 2026-04-25
 
 ### BREAKING — unified login via `apes`
