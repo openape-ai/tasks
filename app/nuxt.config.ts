@@ -17,6 +17,11 @@ export default defineNuxtConfig({
     inviteSecret: 'dev-invite-secret-change-me-min-32-chars',
     // CLI bearer token JWT (HS256) — runtime-overridden by NUXT_CLI_TOKEN_SECRET.
     cliTokenSecret: 'dev-cli-token-secret-change-me-min-32-chars!!',
+    // OpenApe IdP for /api/cli/exchange JWKS verification. NUXT_IDP_ISSUER /
+    // NUXT_IDP_JWKS_URI / NUXT_IDP_AUDIENCE override at runtime.
+    idpIssuer: 'https://id.openape.ai',
+    idpJwksUri: 'https://id.openape.ai/.well-known/jwks.json',
+    idpAudience: 'apes-cli',
     public: {
       siteName: 'OpenApe Tasks',
     },
