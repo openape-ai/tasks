@@ -469,6 +469,16 @@ function localInputToUnix(s: string): number {
   return Math.floor(new Date(s).getTime() / 1000)
 }
 
+/** Bump the Remind input by a delta (seconds), starting from its current
+ *  value if set, otherwise from now. Used by the +1h / +1d / +1w quick
+ *  buttons in the edit sheet. */
+function snoozeRemind(deltaSeconds: number): void {
+  const baseUnix = editRemindLocal.value
+    ? localInputToUnix(editRemindLocal.value)
+    : Math.floor(Date.now() / 1000)
+  editRemindLocal.value = unixToLocalInput(baseUnix + deltaSeconds)
+}
+
 const isEditOpen = computed({
   get: () => editingTask.value !== null,
   set: (v: boolean) => { if (!v) closeEdit() },
@@ -787,7 +797,19 @@ const isEditOpen = computed({
           </UFormField>
 
           <UFormField label="Due">
-            <UInput v-model="editDueLocal" type="datetime-local" :disabled="saving" />
+            <div class="flex items-center gap-2">
+              <UInput v-model="editDueLocal" type="datetime-local" :disabled="saving" class="flex-1" />
+              <UButton
+                v-if="editDueLocal"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                icon="i-lucide-x"
+                :disabled="saving"
+                aria-label="Clear due date"
+                @click="editDueLocal = ''"
+              />
+            </div>
           </UFormField>
 
           <UFormField label="Priority">
@@ -816,7 +838,30 @@ const isEditOpen = computed({
               ? `Already sent ${editingTask.reminder_count} of ${editingTask.reminder_max} reminders. Setting a new value resets the counter.`
               : `Server emails the assignee at this time. Escalates daily up to ${editingTask.reminder_max} mails.`"
           >
-            <UInput v-model="editRemindLocal" type="datetime-local" :disabled="saving" />
+            <div class="flex items-center gap-2">
+              <UInput v-model="editRemindLocal" type="datetime-local" :disabled="saving" class="flex-1" />
+              <UButton
+                v-if="editRemindLocal"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                icon="i-lucide-x"
+                :disabled="saving"
+                aria-label="Clear reminder"
+                @click="editRemindLocal = ''"
+              />
+            </div>
+            <div v-if="editRemindLocal" class="flex flex-wrap gap-1 mt-2">
+              <UButton size="xs" variant="outline" color="neutral" :disabled="saving" @click="snoozeRemind(3600)">
+                +1h
+              </UButton>
+              <UButton size="xs" variant="outline" color="neutral" :disabled="saving" @click="snoozeRemind(86400)">
+                +1d
+              </UButton>
+              <UButton size="xs" variant="outline" color="neutral" :disabled="saving" @click="snoozeRemind(7 * 86400)">
+                +1w
+              </UButton>
+            </div>
           </UFormField>
 
           <UFormField label="Context summary" help="One-liner shown at the top of the reminder mail (sender + subject of the source mail / page).">
