@@ -22,6 +22,12 @@ export default defineNuxtConfig({
     idpIssuer: 'https://id.openape.ai',
     idpJwksUri: 'https://id.openape.ai/.well-known/jwks.json',
     idpAudience: 'apes-cli',
+    // Reminder worker config. NUXT_RESEND_API_KEY drives outbound mail;
+    // NUXT_REMINDER_MAIL_FROM is the sender (must be verified at Resend).
+    // NUXT_PUBLIC_URL is used to build deep-links inside the mail.
+    resendApiKey: '',
+    reminderMailFrom: 'reminders@openape.ai',
+    publicUrl: 'https://tasks.openape.ai',
     public: {
       siteName: 'OpenApe Tasks',
     },
