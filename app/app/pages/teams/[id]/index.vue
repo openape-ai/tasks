@@ -88,6 +88,7 @@ const editAssignee = ref('')
 const editRemindLocal = ref('')
 const editContextUrl = ref('')
 const editContextSummary = ref('')
+const showAdvanced = ref(false)
 const saving = ref(false)
 const editError = ref('')
 
@@ -217,6 +218,9 @@ function openEdit(t: Task) {
   editRemindLocal.value = t.remind_at ? unixToLocalInput(t.remind_at) : ''
   editContextUrl.value = t.context_url ?? ''
   editContextSummary.value = t.context_summary ?? ''
+  // Auto-expand advanced section if any of those fields are already set,
+  // so the user can see what's there without hunting.
+  showAdvanced.value = !!(t.due_at || t.priority || t.assignee_email || t.context_url || t.context_summary)
   editError.value = ''
 }
 
@@ -774,10 +778,11 @@ const isEditOpen = computed({
     <!-- Task edit sheet -->
     <UModal v-model:open="isEditOpen" :dismissible="!saving">
       <template #content>
-        <div v-if="editingTask" class="p-6 space-y-4 max-w-md">
-          <div class="flex items-center justify-between">
-            <h3 class="text-lg font-semibold">
-              Edit task
+        <div v-if="editingTask" class="flex flex-col max-w-md max-h-[85vh]">
+          <!-- Sticky header so user always sees what they're editing -->
+          <div class="flex items-center justify-between px-5 py-3 border-b border-zinc-800 shrink-0">
+            <h3 class="text-base font-semibold truncate">
+              {{ editingTask.title || 'Edit task' }}
             </h3>
             <UBadge
               :color="editingTask.status === 'done' ? 'success' : 'neutral'"
@@ -788,93 +793,107 @@ const isEditOpen = computed({
             </UBadge>
           </div>
 
-          <UFormField label="Title" required>
-            <UInput v-model="editTitle" maxlength="200" size="lg" :disabled="saving" />
-          </UFormField>
+          <!-- Scrollable body -->
+          <div class="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+            <UFormField label="Title" required>
+              <UInput v-model="editTitle" maxlength="200" :disabled="saving" />
+            </UFormField>
 
-          <UFormField label="Notes">
-            <UTextarea v-model="editNotes" :rows="4" :disabled="saving" placeholder="Optional details…" />
-          </UFormField>
+            <UFormField label="Notes">
+              <UTextarea v-model="editNotes" :rows="3" :disabled="saving" placeholder="Optional details…" />
+            </UFormField>
 
-          <UFormField
-            label="🔔 Reminder — sends an email"
-            :help="editingTask.reminder_count > 0
-              ? `Already sent ${editingTask.reminder_count} of ${editingTask.reminder_max} reminder mails. Setting a new value resets the counter.`
-              : `At this time, the server emails the assignee (or the task owner if no assignee is set). Escalates daily up to ${editingTask.reminder_max} mails until the task is marked done.`"
-          >
-            <div class="flex items-center gap-2">
-              <UInput v-model="editRemindLocal" type="datetime-local" :disabled="saving" class="flex-1" />
-              <UButton
-                v-if="editRemindLocal"
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                icon="i-lucide-x"
-                :disabled="saving"
-                aria-label="Clear reminder"
-                @click="editRemindLocal = ''"
-              />
+            <UFormField label="🔔 Reminder">
+              <div class="flex items-center gap-2">
+                <UInput v-model="editRemindLocal" type="datetime-local" :disabled="saving" class="flex-1" />
+                <UButton
+                  v-if="editRemindLocal"
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  icon="i-lucide-x"
+                  :disabled="saving"
+                  aria-label="Clear reminder"
+                  @click="editRemindLocal = ''"
+                />
+              </div>
+              <div v-if="editRemindLocal" class="flex flex-wrap gap-1 mt-1">
+                <UButton size="xs" variant="outline" color="neutral" :disabled="saving" @click="snoozeRemind(3600)">
+                  +1h
+                </UButton>
+                <UButton size="xs" variant="outline" color="neutral" :disabled="saving" @click="snoozeRemind(86400)">
+                  +1d
+                </UButton>
+                <UButton size="xs" variant="outline" color="neutral" :disabled="saving" @click="snoozeRemind(7 * 86400)">
+                  +1w
+                </UButton>
+              </div>
+              <p v-if="editRemindLocal" class="text-xs text-zinc-500 mt-1">
+                Sends an email to {{ editAssignee || editingTask.owner_email }}.<span v-if="editingTask.reminder_count > 0"> {{ editingTask.reminder_count }}/{{ editingTask.reminder_max }} sent.</span>
+              </p>
+            </UFormField>
+
+            <!-- Advanced fields collapsed by default to keep the modal short -->
+            <button
+              type="button"
+              class="flex items-center gap-2 w-full py-1 text-xs font-medium text-zinc-500 hover:text-zinc-300 select-none"
+              @click="showAdvanced = !showAdvanced"
+            >
+              <UIcon :name="showAdvanced ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="size-3.5" />
+              {{ showAdvanced ? 'Hide' : 'Show' }} more options
+            </button>
+
+            <div v-if="showAdvanced" class="space-y-3 pt-1">
+              <UFormField label="📅 Deadline (visual chip only, no email)">
+                <div class="flex items-center gap-2">
+                  <UInput v-model="editDueLocal" type="datetime-local" :disabled="saving" class="flex-1" />
+                  <UButton
+                    v-if="editDueLocal"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    icon="i-lucide-x"
+                    :disabled="saving"
+                    aria-label="Clear deadline"
+                    @click="editDueLocal = ''"
+                  />
+                </div>
+              </UFormField>
+
+              <UFormField label="Priority">
+                <div class="flex gap-2">
+                  <UButton
+                    v-for="opt in (['', 'low', 'med', 'high'] as const)"
+                    :key="opt || 'none'"
+                    size="sm"
+                    :variant="editPriority === opt ? 'solid' : 'outline'"
+                    :color="editPriority === opt ? 'primary' : 'neutral'"
+                    :disabled="saving"
+                    @click="editPriority = opt"
+                  >
+                    {{ opt === '' ? 'None' : opt === 'med' ? 'Medium' : opt.charAt(0).toUpperCase() + opt.slice(1) }}
+                  </UButton>
+                </div>
+              </UFormField>
+
+              <UFormField label="Assignee (email)">
+                <UInput v-model="editAssignee" type="email" :disabled="saving" placeholder="someone@example.com" />
+              </UFormField>
+
+              <UFormField label="Context summary">
+                <UInput v-model="editContextSummary" maxlength="1000" :disabled="saving" placeholder="Vanessa Rumpf: Merkur-Unterlagen" />
+              </UFormField>
+
+              <UFormField label="Context URL">
+                <UInput v-model="editContextUrl" maxlength="2048" :disabled="saving" placeholder="https://outlook.office.com/…" />
+              </UFormField>
             </div>
-            <div v-if="editRemindLocal" class="flex flex-wrap gap-1 mt-2">
-              <UButton size="xs" variant="outline" color="neutral" :disabled="saving" @click="snoozeRemind(3600)">
-                +1h
-              </UButton>
-              <UButton size="xs" variant="outline" color="neutral" :disabled="saving" @click="snoozeRemind(86400)">
-                +1d
-              </UButton>
-              <UButton size="xs" variant="outline" color="neutral" :disabled="saving" @click="snoozeRemind(7 * 86400)">
-                +1w
-              </UButton>
-            </div>
-          </UFormField>
 
-          <UFormField label="Context summary" help="One-liner shown at the top of the reminder mail (sender + subject of the source mail / page).">
-            <UInput v-model="editContextSummary" maxlength="1000" :disabled="saving" placeholder="Vanessa Rumpf (2026-04-25): Merkur-Unterlagen ausfüllen" />
-          </UFormField>
+            <UAlert v-if="editError" color="error" :title="editError" @close="editError = ''" />
+          </div>
 
-          <UFormField label="Context URL" help="Deep-link back to the original (Outlook web URL, ticket, page).">
-            <UInput v-model="editContextUrl" maxlength="2048" :disabled="saving" placeholder="https://outlook.office.com/mail/inbox/id/AAMk…" />
-          </UFormField>
-
-          <UFormField label="📅 Deadline — visual only, no email" help="Just a date/time chip on the row. To get an email reminder, use the 🔔 Reminder field above.">
-            <div class="flex items-center gap-2">
-              <UInput v-model="editDueLocal" type="datetime-local" :disabled="saving" class="flex-1" />
-              <UButton
-                v-if="editDueLocal"
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                icon="i-lucide-x"
-                :disabled="saving"
-                aria-label="Clear deadline"
-                @click="editDueLocal = ''"
-              />
-            </div>
-          </UFormField>
-
-          <UFormField label="Priority">
-            <div class="flex gap-2">
-              <UButton
-                v-for="opt in (['', 'low', 'med', 'high'] as const)"
-                :key="opt || 'none'"
-                size="sm"
-                :variant="editPriority === opt ? 'solid' : 'outline'"
-                :color="editPriority === opt ? 'primary' : 'neutral'"
-                :disabled="saving"
-                @click="editPriority = opt"
-              >
-                {{ opt === '' ? 'None' : opt === 'med' ? 'Medium' : opt.charAt(0).toUpperCase() + opt.slice(1) }}
-              </UButton>
-            </div>
-          </UFormField>
-
-          <UFormField label="Assignee (email)" help="Recipient of the reminder mail. Falls back to the task owner if empty.">
-            <UInput v-model="editAssignee" type="email" :disabled="saving" placeholder="someone@example.com" />
-          </UFormField>
-
-          <UAlert v-if="editError" color="error" :title="editError" @close="editError = ''" />
-
-          <div class="flex items-center gap-2 pt-2">
+          <!-- Sticky footer — Save always reachable, even on mobile -->
+          <div class="flex items-center gap-2 px-5 py-3 border-t border-zinc-800 bg-zinc-900/50 shrink-0">
             <UButton color="primary" :loading="saving" @click="saveEdit">
               Save
             </UButton>
@@ -882,8 +901,8 @@ const isEditOpen = computed({
               Cancel
             </UButton>
             <div class="flex-1" />
-            <UButton color="error" variant="ghost" icon="i-lucide-trash-2" :disabled="saving" @click="deleteFromSheet">
-              Delete
+            <UButton color="error" variant="ghost" icon="i-lucide-trash-2" :disabled="saving" aria-label="Delete task" @click="deleteFromSheet">
+              <span class="sr-only">Delete</span>
             </UButton>
           </div>
         </div>
