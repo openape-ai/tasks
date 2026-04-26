@@ -29,6 +29,12 @@ interface Task {
   due_at: number | null
   assignee_email: string | null
   sort_order: number
+  remind_at: number | null
+  reminder_count: number
+  last_reminder_at: number | null
+  reminder_max: number
+  context_url: string | null
+  context_summary: string | null
   owner_email: string
   created_at: number
   updated_at: number
@@ -79,6 +85,9 @@ const editNotes = ref('')
 const editDueLocal = ref('')
 const editPriority = ref<'' | 'low' | 'med' | 'high'>('')
 const editAssignee = ref('')
+const editRemindLocal = ref('')
+const editContextUrl = ref('')
+const editContextSummary = ref('')
 const saving = ref(false)
 const editError = ref('')
 
@@ -205,6 +214,9 @@ function openEdit(t: Task) {
   editDueLocal.value = t.due_at ? unixToLocalInput(t.due_at) : ''
   editPriority.value = t.priority ?? ''
   editAssignee.value = t.assignee_email ?? ''
+  editRemindLocal.value = t.remind_at ? unixToLocalInput(t.remind_at) : ''
+  editContextUrl.value = t.context_url ?? ''
+  editContextSummary.value = t.context_summary ?? ''
   editError.value = ''
 }
 
@@ -226,6 +238,9 @@ async function saveEdit() {
   const due = editDueLocal.value ? localInputToUnix(editDueLocal.value) : null
   const assignee = editAssignee.value.trim() || null
   const priority = editPriority.value === '' ? null : editPriority.value
+  const remind = editRemindLocal.value ? localInputToUnix(editRemindLocal.value) : null
+  const contextUrl = editContextUrl.value.trim() || null
+  const contextSummary = editContextSummary.value.trim() || null
   try {
     const updated = await ($fetch as any)(`/api/tasks/${t.id}`, {
       method: 'PATCH',
@@ -235,6 +250,9 @@ async function saveEdit() {
         due_at: due,
         assignee_email: assignee,
         priority,
+        remind_at: remind,
+        context_url: contextUrl,
+        context_summary: contextSummary,
       },
     }) as Task
     const idx = tasks.value.findIndex(x => x.id === t.id)
@@ -562,7 +580,7 @@ const isEditOpen = computed({
                 @click="openEdit(t)"
               >
                 <span class="block truncate text-base">{{ t.title }}</span>
-                <span v-if="t.due_at || t.assignee_email || t.priority" class="flex items-center gap-2 mt-0.5">
+                <span v-if="t.due_at || t.remind_at || t.assignee_email || t.priority" class="flex items-center gap-2 mt-0.5">
                   <span
                     v-if="t.due_at"
                     class="text-xs"
@@ -570,6 +588,17 @@ const isEditOpen = computed({
                   >
                     <UIcon name="i-lucide-calendar" class="size-3 inline -mt-0.5" />
                     {{ dueLabel(t.due_at) }}
+                  </span>
+                  <span
+                    v-if="t.remind_at"
+                    class="text-xs"
+                    :class="t.reminder_count > 0 ? 'text-amber-400' : 'text-zinc-400'"
+                    :title="t.reminder_count > 0
+                      ? `Reminder ${t.reminder_count}/${t.reminder_max} sent`
+                      : `Reminder pending`"
+                  >
+                    <UIcon name="i-lucide-bell" class="size-3 inline -mt-0.5" />
+                    {{ dueLabel(t.remind_at) }}<span v-if="t.reminder_count > 0"> ({{ t.reminder_count }}/{{ t.reminder_max }})</span>
                   </span>
                   <span v-if="t.priority === 'high'" class="text-xs text-red-400">!!!</span>
                   <span v-else-if="t.priority === 'med'" class="text-xs text-amber-400">!!</span>
@@ -779,6 +808,23 @@ const isEditOpen = computed({
 
           <UFormField label="Assignee (email)">
             <UInput v-model="editAssignee" type="email" :disabled="saving" placeholder="someone@example.com" />
+          </UFormField>
+
+          <UFormField
+            label="Remind"
+            :help="editingTask.reminder_count > 0
+              ? `Already sent ${editingTask.reminder_count} of ${editingTask.reminder_max} reminders. Setting a new value resets the counter.`
+              : `Server emails the assignee at this time. Escalates daily up to ${editingTask.reminder_max} mails.`"
+          >
+            <UInput v-model="editRemindLocal" type="datetime-local" :disabled="saving" />
+          </UFormField>
+
+          <UFormField label="Context summary" help="One-liner shown at the top of the reminder mail (sender + subject of the source mail / page).">
+            <UInput v-model="editContextSummary" maxlength="1000" :disabled="saving" placeholder="Vanessa Rumpf (2026-04-25): Merkur-Unterlagen ausfüllen" />
+          </UFormField>
+
+          <UFormField label="Context URL" help="Deep-link back to the original (Outlook web URL, ticket, page).">
+            <UInput v-model="editContextUrl" maxlength="2048" :disabled="saving" placeholder="https://outlook.office.com/mail/inbox/id/AAMk…" />
           </UFormField>
 
           <UAlert v-if="editError" color="error" :title="editError" @close="editError = ''" />
