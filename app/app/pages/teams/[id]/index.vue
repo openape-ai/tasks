@@ -796,47 +796,11 @@ const isEditOpen = computed({
             <UTextarea v-model="editNotes" :rows="4" :disabled="saving" placeholder="Optional details…" />
           </UFormField>
 
-          <UFormField label="Due">
-            <div class="flex items-center gap-2">
-              <UInput v-model="editDueLocal" type="datetime-local" :disabled="saving" class="flex-1" />
-              <UButton
-                v-if="editDueLocal"
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                icon="i-lucide-x"
-                :disabled="saving"
-                aria-label="Clear due date"
-                @click="editDueLocal = ''"
-              />
-            </div>
-          </UFormField>
-
-          <UFormField label="Priority">
-            <div class="flex gap-2">
-              <UButton
-                v-for="opt in (['', 'low', 'med', 'high'] as const)"
-                :key="opt || 'none'"
-                size="sm"
-                :variant="editPriority === opt ? 'solid' : 'outline'"
-                :color="editPriority === opt ? 'primary' : 'neutral'"
-                :disabled="saving"
-                @click="editPriority = opt"
-              >
-                {{ opt === '' ? 'None' : opt === 'med' ? 'Medium' : opt.charAt(0).toUpperCase() + opt.slice(1) }}
-              </UButton>
-            </div>
-          </UFormField>
-
-          <UFormField label="Assignee (email)">
-            <UInput v-model="editAssignee" type="email" :disabled="saving" placeholder="someone@example.com" />
-          </UFormField>
-
           <UFormField
-            label="Remind"
+            label="🔔 Reminder — sends an email"
             :help="editingTask.reminder_count > 0
-              ? `Already sent ${editingTask.reminder_count} of ${editingTask.reminder_max} reminders. Setting a new value resets the counter.`
-              : `Server emails the assignee at this time. Escalates daily up to ${editingTask.reminder_max} mails.`"
+              ? `Already sent ${editingTask.reminder_count} of ${editingTask.reminder_max} reminder mails. Setting a new value resets the counter.`
+              : `At this time, the server emails the assignee (or the task owner if no assignee is set). Escalates daily up to ${editingTask.reminder_max} mails until the task is marked done.`"
           >
             <div class="flex items-center gap-2">
               <UInput v-model="editRemindLocal" type="datetime-local" :disabled="saving" class="flex-1" />
@@ -870,6 +834,42 @@ const isEditOpen = computed({
 
           <UFormField label="Context URL" help="Deep-link back to the original (Outlook web URL, ticket, page).">
             <UInput v-model="editContextUrl" maxlength="2048" :disabled="saving" placeholder="https://outlook.office.com/mail/inbox/id/AAMk…" />
+          </UFormField>
+
+          <UFormField label="📅 Deadline — visual only, no email" help="Just a date/time chip on the row. To get an email reminder, use the 🔔 Reminder field above.">
+            <div class="flex items-center gap-2">
+              <UInput v-model="editDueLocal" type="datetime-local" :disabled="saving" class="flex-1" />
+              <UButton
+                v-if="editDueLocal"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                icon="i-lucide-x"
+                :disabled="saving"
+                aria-label="Clear deadline"
+                @click="editDueLocal = ''"
+              />
+            </div>
+          </UFormField>
+
+          <UFormField label="Priority">
+            <div class="flex gap-2">
+              <UButton
+                v-for="opt in (['', 'low', 'med', 'high'] as const)"
+                :key="opt || 'none'"
+                size="sm"
+                :variant="editPriority === opt ? 'solid' : 'outline'"
+                :color="editPriority === opt ? 'primary' : 'neutral'"
+                :disabled="saving"
+                @click="editPriority = opt"
+              >
+                {{ opt === '' ? 'None' : opt === 'med' ? 'Medium' : opt.charAt(0).toUpperCase() + opt.slice(1) }}
+              </UButton>
+            </div>
+          </UFormField>
+
+          <UFormField label="Assignee (email)" help="Recipient of the reminder mail. Falls back to the task owner if empty.">
+            <UInput v-model="editAssignee" type="email" :disabled="saving" placeholder="someone@example.com" />
           </UFormField>
 
           <UAlert v-if="editError" color="error" :title="editError" @close="editError = ''" />
