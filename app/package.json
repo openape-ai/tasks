@@ -16,7 +16,7 @@
     "@nuxt/ui": "^4.4.0",
     "@openape/core": "^0.11.0",
     "@openape/grants": "^0.11.0",
-    "@openape/nuxt-auth-sp": "^0.7.0",
+    "@openape/nuxt-auth-sp": "^0.9.1",
     "drizzle-orm": "^0.44.7",
     "jose": "^5.9.6",
     "marked": "^18.0.2",
