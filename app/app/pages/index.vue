@@ -36,6 +36,13 @@ async function onSubmit() {
   <div class="min-h-dvh flex flex-col bg-zinc-950 text-zinc-100">
     <main class="flex-1 flex items-center justify-center px-4 py-12">
       <div class="w-full max-w-md flex flex-col items-center text-center">
+        <OpenApeOAuthErrorAlert
+          class="text-left mb-6 w-full"
+          :messages="{
+            access_denied: 'Die Anmeldung wurde vom Identity Provider abgelehnt. Wahrscheinlich hat dein Domain-Admin Tasks noch nicht freigegeben — frag deinen Admin oder versuche eine andere Email-Adresse.',
+          }"
+        />
+
         <div class="text-6xl mb-6" aria-hidden="true">
           ✅
         </div>
