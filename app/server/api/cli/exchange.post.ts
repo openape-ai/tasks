@@ -46,9 +46,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  // aud is checked manually below — first-party token has aud='apes-cli',
+  // a delegation AuthZ-JWT (sp-data-access.md §5.1) has aud=<this SP>.
   const result = await verifyAuthzJWT(body.subject_token, {
     expectedIss: resolved.issuer,
-    expectedAud: idpAudience,
     jwksUri: resolved.jwksUri,
   })
 
@@ -56,7 +57,7 @@ export default defineEventHandler(async (event) => {
     throw createProblemError({
       status: 401,
       title: 'Invalid subject_token',
-      detail: result.error ?? `Token must be issued by ${resolved.issuer} (DDISA-resolved from ${resolved.sub}) with aud=${idpAudience}.`,
+      detail: result.error ?? `Token must be issued by ${resolved.issuer} (DDISA-resolved from ${resolved.sub}).`,
     })
   }
 
@@ -72,14 +73,34 @@ export default defineEventHandler(async (event) => {
 
   const act = claims.act === 'agent' ? 'agent' : 'human'
 
-  // Delegated subject_token (delegation.md) carries `scopes`. Absent for
-  // first-party `apes login` → unrestricted token (behaviour-preserving).
+  const SELF = 'tasks.openape.ai'
+  const aud = typeof claims.aud === 'string' ? claims.aud : undefined
+  const isFirstParty = aud === idpAudience
+  const isDelegation = aud === SELF || typeof claims.grant_id === 'string'
+  if (!isFirstParty && !isDelegation) {
+    throw createProblemError({
+      status: 401,
+      title: 'Invalid subject_token',
+      detail: `aud must be "${idpAudience}" (first-party) or "${SELF}" (delegation); got "${aud ?? '(none)'}".`,
+    })
+  }
+
   const claimedScopes = claims.scopes ?? claims.scope
+  const requested = Array.isArray(claimedScopes)
+    ? claimedScopes.filter((s): s is string => typeof s === 'string')
+    : []
   let grantedScope: string[] | undefined
-  if (Array.isArray(claimedScopes) && claimedScopes.length > 0) {
+
+  if (isDelegation) {
+    if (requested.length === 0) {
+      throw createProblemError({
+        status: 403,
+        title: 'delegation_without_scope',
+        detail: 'A delegation subject_token must carry at least one scope.',
+      })
+    }
     const catalog = ((config.openapeSp as { manifest?: { scopes?: Array<{ id: string }> } } | undefined)
       ?.manifest?.scopes ?? []).map(s => s.id)
-    const requested = claimedScopes.filter((s): s is string => typeof s === 'string')
     const notInCatalog = requested.filter(s => !catalog.includes(s))
     if (notInCatalog.length > 0) {
       throw createProblemError({
@@ -90,6 +111,7 @@ export default defineEventHandler(async (event) => {
     }
     grantedScope = requested
   }
+  // First-party (apes-cli): unrestricted, behaviour-preserving.
 
   const { token, expiresAt } = await signCliToken({ email: sub, act, scope: grantedScope })
 
