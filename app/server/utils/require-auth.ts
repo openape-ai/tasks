@@ -1,11 +1,36 @@
 import type { H3Event } from 'h3'
-import { createError, getHeader, useSession } from 'h3'
+import { createError, getHeader, getMethod, useSession } from 'h3'
 import { useRuntimeConfig } from 'nitropack/runtime'
 import { verifyCliToken } from './cli-token'
 
 export interface Caller {
   email: string
   act: 'human' | 'agent'
+  /** Delegated scope subset; undefined = first-party (unrestricted). */
+  scope?: string[]
+}
+
+/**
+ * Scope enforcement chokepoint (sp-data-access.md §5.3). Only delegated
+ * tokens carry `scope`; first-party callers pass through unchanged. Method
+ * → required scope: GET/HEAD → `<prefix>:read`, mutating → `<prefix>:write`.
+ */
+function enforceScope(event: H3Event, caller: Caller): Caller {
+  if (!caller.scope) return caller
+  if (caller.scope.length === 0) {
+    throw createError({ statusCode: 403, statusMessage: 'Forbidden', message: 'Delegated token carries no scope' })
+  }
+  const prefix = caller.scope[0]!.split(':')[0]
+  const method = getMethod(event).toUpperCase()
+  const needed = method === 'GET' || method === 'HEAD' ? `${prefix}:read` : `${prefix}:write`
+  if (!caller.scope.includes(needed)) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Forbidden',
+      message: `Delegated token lacks required scope "${needed}" (has: ${caller.scope.join(', ')})`,
+    })
+  }
+  return caller
 }
 
 interface SpSessionData {
@@ -51,7 +76,7 @@ export async function requireCaller(event: H3Event): Promise<Caller> {
     const token = authHeader.slice(7).trim()
     if (token) {
       const cli = await verifyCliToken(token)
-      if (cli) return { email: cli.email, act: cli.act }
+      if (cli) return enforceScope(event, { email: cli.email, act: cli.act, scope: cli.scope })
       const verified = await verifyAgentToken(token)
       if (verified) return verified
     }

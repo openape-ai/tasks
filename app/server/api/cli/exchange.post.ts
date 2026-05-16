@@ -72,11 +72,26 @@ export default defineEventHandler(async (event) => {
 
   const act = claims.act === 'agent' ? 'agent' : 'human'
 
-  const { token, expiresAt } = await signCliToken({
-    email: sub,
-    act,
-    ttlSeconds: 30 * 24 * 3600,
-  })
+  // Delegated subject_token (delegation.md) carries `scopes`. Absent for
+  // first-party `apes login` → unrestricted token (behaviour-preserving).
+  const claimedScopes = claims.scopes ?? claims.scope
+  let grantedScope: string[] | undefined
+  if (Array.isArray(claimedScopes) && claimedScopes.length > 0) {
+    const catalog = ((config.openapeSp as { manifest?: { scopes?: Array<{ id: string }> } } | undefined)
+      ?.manifest?.scopes ?? []).map(s => s.id)
+    const requested = claimedScopes.filter((s): s is string => typeof s === 'string')
+    const notInCatalog = requested.filter(s => !catalog.includes(s))
+    if (notInCatalog.length > 0) {
+      throw createProblemError({
+        status: 400,
+        title: 'invalid_scope',
+        detail: `Requested scope(s) not offered by this SP: ${notInCatalog.join(', ')}. Catalog: ${catalog.join(', ') || '(none)'}.`,
+      })
+    }
+    grantedScope = requested
+  }
+
+  const { token, expiresAt } = await signCliToken({ email: sub, act, scope: grantedScope })
 
   setResponseStatus(event, 201)
   return {
@@ -84,6 +99,6 @@ export default defineEventHandler(async (event) => {
     token_type: 'Bearer' as const,
     expires_at: expiresAt,
     aud: 'tasks.openape.ai',
-    ...(Array.isArray(body.scopes) ? { scopes: body.scopes } : {}),
+    ...(grantedScope ? { scopes: grantedScope } : {}),
   }
 })
