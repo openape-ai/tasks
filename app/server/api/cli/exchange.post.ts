@@ -3,6 +3,7 @@ import { useRuntimeConfig } from 'nitropack/runtime'
 import { verifyAuthzJWT } from '@openape/grants'
 import { createProblemError } from '../../utils/problem'
 import { signCliToken } from '../../utils/cli-token'
+import { resolveIssuerForToken } from '../../utils/ddisa-issuer'
 
 interface ExchangeBody {
   subject_token?: string
@@ -30,21 +31,32 @@ export default defineEventHandler(async (event) => {
   }
 
   const config = useRuntimeConfig(event)
-  const idpIssuer = (config.idpIssuer as string) || 'https://id.openape.ai'
-  const idpJwksUri = (config.idpJwksUri as string) || `${idpIssuer}/.well-known/jwks.json`
   const idpAudience = (config.idpAudience as string) || 'apes-cli'
 
+  // DDISA: resolve the authoritative issuer from the SUBJECT's domain
+  // (protocol sp-data-access.md §2.1) — never hardcoded, no allowlist.
+  // Behaviour-preserving: a subject whose domain has no DDISA record (or
+  // points at id.openape.ai) verifies against id.openape.ai exactly as before.
+  const resolved = await resolveIssuerForToken(body.subject_token)
+  if (!resolved) {
+    throw createProblemError({
+      status: 401,
+      title: 'subject_token has no usable subject claim',
+      detail: 'Expected sub to be an email address.',
+    })
+  }
+
   const result = await verifyAuthzJWT(body.subject_token, {
-    expectedIss: idpIssuer,
+    expectedIss: resolved.issuer,
     expectedAud: idpAudience,
-    jwksUri: idpJwksUri,
+    jwksUri: resolved.jwksUri,
   })
 
   if (!result.valid || !result.claims) {
     throw createProblemError({
       status: 401,
       title: 'Invalid subject_token',
-      detail: result.error ?? `Token must be issued by ${idpIssuer} with aud=${idpAudience}.`,
+      detail: result.error ?? `Token must be issued by ${resolved.issuer} (DDISA-resolved from ${resolved.sub}) with aud=${idpAudience}.`,
     })
   }
 
