@@ -61,6 +61,22 @@ export default defineNuxtConfig({
       || process.env.NUXT_SESSION_SECRET
       || 'dev-session-secret-at-least-32-characters-long',
     fallbackIdpUrl: process.env.NUXT_FALLBACK_IDP_URL || 'https://id.openape.ai',
+    // Scope catalog — discoverable at /.well-known/openape.json (protocol
+    // sp-data-access.md §3). A Receiver requests a subset of these.
+    manifest: {
+      scopes: [
+        {
+          id: 'tasks:read',
+          description: 'Read your task lists and tasks.',
+          grants: ['GET /api/teams', 'GET /api/teams/:id/tasks', 'GET /api/tasks/:id'],
+        },
+        {
+          id: 'tasks:write',
+          description: 'Create, edit, complete and delete your tasks.',
+          grants: ['POST /api/teams/:id/tasks', 'PATCH /api/tasks/:id', 'DELETE /api/tasks/:id'],
+        },
+      ],
+    },
   },
 
   nitro: {
