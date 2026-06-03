@@ -114,12 +114,12 @@ export default defineEventHandler(async (event) => {
       })
     }
     const config = useRuntimeConfig(event)
-    // manifest.scopes is now a Record<scopeId, {...}> — extract the keys as
-    // the catalog. The type is cast via unknown to avoid TS structural mismatch
-    // between the module's ManifestConfig type and our runtime access pattern.
-    const rawScopes = ((config.openapeSp as unknown as { manifest?: { scopes?: Record<string, unknown> } } | undefined)
+    // manifest.scopes is the array form (per sp-scope-catalog.json) — the
+    // catalog is the set of entry `id`s. Cast via unknown to read the runtime
+    // shape independent of the module's ManifestConfig typing.
+    const rawScopes = ((config.openapeSp as unknown as { manifest?: { scopes?: Array<{ id: string }> } } | undefined)
       ?.manifest?.scopes)
-    const catalog = rawScopes ? Object.keys(rawScopes) : []
+    const catalog = Array.isArray(rawScopes) ? rawScopes.map(s => s.id) : []
     const notInCatalog = requested.filter(s => !catalog.includes(s))
     if (notInCatalog.length > 0) {
       throw createError({

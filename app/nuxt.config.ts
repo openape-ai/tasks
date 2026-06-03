@@ -60,22 +60,22 @@ export default defineNuxtConfig({
       || 'dev-session-secret-at-least-32-characters-long',
     fallbackIdpUrl: process.env.NUXT_FALLBACK_IDP_URL || 'https://id.openape.ai',
     // Scope catalog — discoverable at /.well-known/openape.json (protocol
-    // sp-data-access.md §3). A Receiver requests a subset of these.
-    // Keys are scope IDs; the exchange handler validates delegation tokens
-    // against Object.keys(manifest.scopes).
+    // sp-data-access.md §3, array form per sp-scope-catalog.json). A Receiver
+    // requests a subset of these. Each entry's `id` is the scope ID; the
+    // exchange handler validates delegation tokens against those ids.
     manifest: {
-      scopes: {
-        'tasks:read': {
-          name: 'Read tasks',
+      scopes: [
+        {
+          id: 'tasks:read',
           description: 'Read your task lists and tasks.',
-          risk: 'low',
+          grants: ['GET /api/teams', 'GET /api/teams/:id/tasks', 'GET /api/tasks/:id'],
         },
-        'tasks:write': {
-          name: 'Write tasks',
+        {
+          id: 'tasks:write',
           description: 'Create, edit, complete and delete your tasks.',
-          risk: 'low',
+          grants: ['POST /api/teams/:id/tasks', 'PATCH /api/tasks/:id', 'DELETE /api/tasks/:id'],
         },
-      },
+      ],
     },
   },
 
