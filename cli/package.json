@@ -29,7 +29,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@openape/cli-auth": "^0.2.3",
+    "@openape/cli-auth": "^0.5.0",
     "@openape/core": "^0.11.0",
     "citty": "^0.1.6",
     "jose": "^5.9.6",
