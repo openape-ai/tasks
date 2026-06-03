@@ -1,7 +1,7 @@
 import type { H3Event } from 'h3'
 import { createError, getHeader, getMethod, useSession } from 'h3'
 import { useRuntimeConfig } from 'nitropack/runtime'
-import { verifyCliToken } from './cli-token'
+import { verifyTasksCliToken } from './cli-token'
 
 export interface Caller {
   email: string
@@ -75,7 +75,7 @@ export async function requireCaller(event: H3Event): Promise<Caller> {
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.slice(7).trim()
     if (token) {
-      const cli = await verifyCliToken(token)
+      const cli = await verifyTasksCliToken(token)
       if (cli) return enforceScope(event, { email: cli.email, act: cli.act, scope: cli.scope })
       const verified = await verifyAgentToken(token)
       if (verified) return verified

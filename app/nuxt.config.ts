@@ -28,13 +28,11 @@ export default defineNuxtConfig({
     tursoAuthToken: '',
     // Invite JWT — runtime-overridden by NUXT_INVITE_SECRET.
     inviteSecret: 'dev-invite-secret-change-me-min-32-chars',
-    // CLI bearer token JWT (HS256) — runtime-overridden by NUXT_CLI_TOKEN_SECRET.
-    cliTokenSecret: 'dev-cli-token-secret-change-me-min-32-chars!!',
-    // OpenApe IdP for /api/cli/exchange JWKS verification. NUXT_IDP_ISSUER /
-    // NUXT_IDP_JWKS_URI / NUXT_IDP_AUDIENCE override at runtime.
-    idpIssuer: 'https://id.openape.ai',
-    idpJwksUri: 'https://id.openape.ai/.well-known/jwks.json',
-    idpAudience: 'apes-cli',
+    // CLI token JWT (HS256) now uses openapeSp.sessionSecret as the signing
+    // secret (via signTasksCliToken / verifyTasksCliToken). The old
+    // cliTokenSecret / idpIssuer / idpJwksUri / idpAudience keys have been
+    // removed — DDISA issuer resolution is handled by the shared
+    // resolveIssuerForToken auto-imported from @openape/nuxt-auth-sp.
     // Reminder worker config. NUXT_RESEND_API_KEY drives outbound mail;
     // NUXT_REMINDER_MAIL_FROM is the sender (must be verified at Resend).
     // NUXT_PUBLIC_URL is used to build deep-links inside the mail.
@@ -63,19 +61,21 @@ export default defineNuxtConfig({
     fallbackIdpUrl: process.env.NUXT_FALLBACK_IDP_URL || 'https://id.openape.ai',
     // Scope catalog — discoverable at /.well-known/openape.json (protocol
     // sp-data-access.md §3). A Receiver requests a subset of these.
+    // Keys are scope IDs; the exchange handler validates delegation tokens
+    // against Object.keys(manifest.scopes).
     manifest: {
-      scopes: [
-        {
-          id: 'tasks:read',
+      scopes: {
+        'tasks:read': {
+          name: 'Read tasks',
           description: 'Read your task lists and tasks.',
-          grants: ['GET /api/teams', 'GET /api/teams/:id/tasks', 'GET /api/tasks/:id'],
+          risk: 'low',
         },
-        {
-          id: 'tasks:write',
+        'tasks:write': {
+          name: 'Write tasks',
           description: 'Create, edit, complete and delete your tasks.',
-          grants: ['POST /api/teams/:id/tasks', 'PATCH /api/tasks/:id', 'DELETE /api/tasks/:id'],
+          risk: 'low',
         },
-      ],
+      },
     },
   },
 

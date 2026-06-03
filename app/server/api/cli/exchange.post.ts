@@ -1,9 +1,9 @@
-import { defineEventHandler, readBody, setResponseStatus } from 'h3'
-import { useRuntimeConfig } from 'nitropack/runtime'
-import { verifyAuthzJWT } from '@openape/grants'
-import { createProblemError } from '../../utils/problem'
-import { signCliToken } from '../../utils/cli-token'
-import { resolveIssuerForToken } from '../../utils/ddisa-issuer'
+import { createRemoteJWKSet, jwtVerify } from 'jose'
+import { createError, defineEventHandler, setResponseStatus } from 'h3'
+import { signTasksCliToken } from '../../utils/cli-token'
+
+// Auto-imported from @openape/nuxt-auth-sp via addServerImportsDir:
+//   resolveIssuerForToken, assertSafeIdpUrl, getSpConfig
 
 interface ExchangeBody {
   subject_token?: string
@@ -13,12 +13,10 @@ interface ExchangeBody {
 /**
  * POST /api/cli/exchange — RFC 8693-style token exchange.
  *
- * Accepts an IdP-issued subject_token (signed by id.openape.ai with
- * `aud='apes-cli'`), verifies it via JWKS, and mints an SP-scoped HS256
- * token for tasks.openape.ai. The CLI side (`@openape/cli-auth`
- * `getAuthorizedBearer`) caches the result so subsequent ape-tasks
- * commands don't hit this endpoint until the SP-token expires (default
- * 30 days).
+ * Extends the standard DDISA CLI flow (which only accepts `aud='apes-cli'`)
+ * with a delegation path: tokens with `aud=tasks.openape.ai` or carrying a
+ * `grant_id` claim are treated as Receiver delegation tokens
+ * (sp-data-access.md §5.1) and validated for scope against the SP manifest.
  *
  * Body: `{ subject_token: <jwt>, scopes?: string[] }`
  *
@@ -27,100 +25,131 @@ interface ExchangeBody {
 export default defineEventHandler(async (event) => {
   const body = await readBody<ExchangeBody>(event)
   if (!body?.subject_token || typeof body.subject_token !== 'string') {
-    throw createProblemError({ status: 400, title: 'subject_token required' })
+    throw createError({ statusCode: 400, statusMessage: 'subject_token required' })
   }
-
-  const config = useRuntimeConfig(event)
-  const idpAudience = (config.idpAudience as string) || 'apes-cli'
 
   // DDISA: resolve the authoritative issuer from the SUBJECT's domain
   // (protocol sp-data-access.md §2.1) — never hardcoded, no allowlist.
-  // Behaviour-preserving: a subject whose domain has no DDISA record (or
-  // points at id.openape.ai) verifies against id.openape.ai exactly as before.
   const resolved = await resolveIssuerForToken(body.subject_token)
   if (!resolved) {
-    throw createProblemError({
-      status: 401,
-      title: 'subject_token has no usable subject claim',
-      detail: 'Expected sub to be an email address.',
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'subject_token has no usable subject claim',
+      data: { detail: 'Expected sub to be an email address.' },
     })
   }
 
-  // aud is checked manually below — first-party token has aud='apes-cli',
-  // a delegation AuthZ-JWT (sp-data-access.md §5.1) has aud=<this SP>.
-  const result = await verifyAuthzJWT(body.subject_token, {
-    expectedIss: resolved.issuer,
-    jwksUri: resolved.jwksUri,
-  })
-
-  if (!result.valid || !result.claims) {
-    throw createProblemError({
-      status: 401,
-      title: 'Invalid subject_token',
-      detail: result.error ?? `Token must be issued by ${resolved.issuer} (DDISA-resolved from ${resolved.sub}).`,
+  // SSRF guard: reject non-https or private/loopback DDISA-resolved issuers
+  // before fetching their JWKS (inherited from @openape/nuxt-auth-sp 0.11).
+  try {
+    await assertSafeIdpUrl(resolved.issuer)
+  }
+  catch (err) {
+    throw createError({
+      statusCode: 502,
+      statusMessage: 'IdP issuer not permitted',
+      data: { detail: err instanceof Error ? err.message : 'issuer rejected' },
     })
   }
 
-  const claims = result.claims as unknown as Record<string, unknown>
+  // Verify the token against the DDISA-resolved issuer's JWKS.
+  // We do NOT set audience here so that both aud='apes-cli' (first-party) and
+  // aud='tasks.openape.ai' (delegation) pass jose's validation. We check aud
+  // manually below.
+  const jwks = createRemoteJWKSet(new URL(resolved.jwksUri), { timeoutDuration: 5000 })
+  let claims: Record<string, unknown>
+  try {
+    const { payload } = await jwtVerify(body.subject_token, jwks, {
+      issuer: resolved.issuer,
+    })
+    claims = payload as unknown as Record<string, unknown>
+  }
+  catch (err) {
+    const detail = err instanceof Error ? err.message : 'verify failed'
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Invalid subject_token',
+      data: { detail: `Token must be issued by ${resolved.issuer}. ${detail}` },
+    })
+  }
+
   const sub = claims.sub
   if (typeof sub !== 'string' || !sub.includes('@')) {
-    throw createProblemError({
-      status: 401,
-      title: 'subject_token has no usable subject claim',
-      detail: 'Expected sub to be an email address.',
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'subject_token has no usable subject claim',
+      data: { detail: 'Expected sub to be an email address.' },
     })
   }
 
   const act = claims.act === 'agent' ? 'agent' : 'human'
+  const { clientId } = getSpConfig()
 
-  const SELF = 'tasks.openape.ai'
+  const FIRST_PARTY_AUD = 'apes-cli'
   const aud = typeof claims.aud === 'string' ? claims.aud : undefined
-  const isFirstParty = aud === idpAudience
-  const isDelegation = aud === SELF || typeof claims.grant_id === 'string'
+  const isFirstParty = aud === FIRST_PARTY_AUD
+  const isDelegation = aud === clientId || typeof claims.grant_id === 'string'
   if (!isFirstParty && !isDelegation) {
-    throw createProblemError({
-      status: 401,
-      title: 'Invalid subject_token',
-      detail: `aud must be "${idpAudience}" (first-party) or "${SELF}" (delegation); got "${aud ?? '(none)'}".`,
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Invalid subject_token',
+      data: {
+        detail: `aud must be "${FIRST_PARTY_AUD}" (first-party) or "${clientId}" (delegation); got "${aud ?? '(none)'}".`,
+      },
     })
   }
 
-  const claimedScopes = claims.scopes ?? claims.scope
-  const requested = Array.isArray(claimedScopes)
-    ? claimedScopes.filter((s): s is string => typeof s === 'string')
-    : []
+  // Delegation path: validate that the requested scopes are in the SP manifest.
   let grantedScope: string[] | undefined
-
   if (isDelegation) {
+    const claimedScopes = claims.scopes ?? claims.scope
+    const requested = Array.isArray(claimedScopes)
+      ? claimedScopes.filter((s): s is string => typeof s === 'string')
+      : []
     if (requested.length === 0) {
-      throw createProblemError({
-        status: 403,
-        title: 'delegation_without_scope',
-        detail: 'A delegation subject_token must carry at least one scope.',
+      throw createError({
+        statusCode: 403,
+        statusMessage: 'delegation_without_scope',
+        data: { detail: 'A delegation subject_token must carry at least one scope.' },
       })
     }
-    const catalog = ((config.openapeSp as { manifest?: { scopes?: Array<{ id: string }> } } | undefined)
-      ?.manifest?.scopes ?? []).map(s => s.id)
+    const config = useRuntimeConfig(event)
+    // manifest.scopes is now a Record<scopeId, {...}> — extract the keys as
+    // the catalog. The type is cast via unknown to avoid TS structural mismatch
+    // between the module's ManifestConfig type and our runtime access pattern.
+    const rawScopes = ((config.openapeSp as unknown as { manifest?: { scopes?: Record<string, unknown> } } | undefined)
+      ?.manifest?.scopes)
+    const catalog = rawScopes ? Object.keys(rawScopes) : []
     const notInCatalog = requested.filter(s => !catalog.includes(s))
     if (notInCatalog.length > 0) {
-      throw createProblemError({
-        status: 400,
-        title: 'invalid_scope',
-        detail: `Requested scope(s) not offered by this SP: ${notInCatalog.join(', ')}. Catalog: ${catalog.join(', ') || '(none)'}.`,
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'invalid_scope',
+        data: {
+          detail: `Requested scope(s) not offered by this SP: ${notInCatalog.join(', ')}. Catalog: ${catalog.join(', ') || '(none)'}.`,
+        },
       })
     }
     grantedScope = requested
   }
-  // First-party (apes-cli): unrestricted, behaviour-preserving.
 
-  const { token, expiresAt } = await signCliToken({ email: sub, act, scope: grantedScope })
+  // signTasksCliToken is the local variant of signCliToken that additionally
+  // supports scope for delegation tokens. It reads secret + clientId from
+  // openapeSp.sessionSecret / openapeSp.clientId (same source as the shared
+  // signCliToken from @openape/nuxt-auth-sp, so first-party tokens are
+  // verified identically by verifyTasksCliToken).
+  const { token, expiresAt } = await signTasksCliToken({
+    email: sub,
+    act,
+    ...(grantedScope ? { scope: grantedScope } : {}),
+  })
 
   setResponseStatus(event, 201)
   return {
     access_token: token,
     token_type: 'Bearer' as const,
     expires_at: expiresAt,
-    aud: 'tasks.openape.ai',
+    aud: clientId,
     ...(grantedScope ? { scopes: grantedScope } : {}),
   }
 })
