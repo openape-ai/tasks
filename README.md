@@ -66,8 +66,8 @@ pnpm install
 pnpm --filter @openape-tasks/app dev
 ```
 
-For production: see [`docs/deploy.md`](./docs/deploy.md) — host-agnostic
-`scripts/deploy.sh` + GitHub Actions auto-deploy over SSH.
+For production: see [`docs/deploy.md`](./docs/deploy.md) — tested-image
+Docker deploy (`pnpm run deploy:image`) + GitHub Actions auto-deploy.
 
 ## Docs
 
@@ -109,7 +109,7 @@ openape-tasks/
 │     ├─ commands/          login, teams, accept, list/show/new/edit/status/done/reopen/rm, docs
 │     └─ docs/              Embedded Markdown references printed by `ape-tasks docs`
 ├─ scripts/
-│  ├─ deploy.sh             Host-agnostic deploy (env-driven)
+│  ├─ deploy-image.mjs      Tested-image Docker deploy (registry → compose)
 │  └─ server-setup.sh       One-shot root setup on a fresh host
 ├─ .github/workflows/
 │  ├─ ci.yml                typecheck + build (PRs + main)
