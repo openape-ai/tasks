@@ -293,6 +293,7 @@ export const newCommand = defineCommand({
     'reminder-max': { type: 'string', description: 'Max reminder mails before silence (default 5).' },
     'context-url': { type: 'string', description: 'Deep-link back to the source (e.g. an Outlook web URL).' },
     'context-summary': { type: 'string', description: 'One-liner shown in the reminder mail (e.g. "Mail from X: subject Y").' },
+    'dedup-key': { type: 'string', description: 'Idempotency key (e.g. a mail Message-ID). If an open task with this key exists in the team, no duplicate is created.' },
     json: { type: 'boolean', description: 'JSON output.' },
     'id-only': { type: 'boolean', description: 'Print only the new task id.' },
     endpoint: { type: 'string', description: 'Override tasks endpoint.' },
@@ -319,17 +320,19 @@ export const newCommand = defineCommand({
     if (remindAt !== undefined) body.remind_at = remindAt
     if (contextUrl !== undefined) body.context_url = contextUrl
     if (contextSummary !== undefined) body.context_summary = contextSummary
+    if (typeof args['dedup-key'] === 'string' && args['dedup-key'].trim()) body.dedup_key = args['dedup-key'].trim()
     if (typeof args['reminder-max'] === 'string') {
       const n = Number(args['reminder-max'])
       if (Number.isInteger(n) && n >= 0 && n <= 50) body.reminder_max = n
     }
 
-    const t = await apiCall<Task>('POST', `/api/teams/${teamId}/tasks`, {
+    const t = await apiCall<Task & { deduped?: boolean }>('POST', `/api/teams/${teamId}/tasks`, {
       endpoint: args.endpoint,
       body,
     })
     if (args['id-only']) { printLine(t.id); return }
     if (args.json) { printJson(t); return }
+    if (t.deduped) { printLine(`↺ existiert bereits (Task ${t.id}) — übersprungen`); return }
     printLine(t.id)
   },
 })

@@ -43,6 +43,7 @@ export default defineEventHandler(async (event) => {
       id: t.id,
       name: t.name,
       description: t.description,
+      org_id: t.orgId,
       role: roleById.get(t.id) ?? 'viewer',
       member_count: memberRows.length,
       open_task_count: openCount,

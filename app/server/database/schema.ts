@@ -7,7 +7,14 @@ export const teams = sqliteTable('teams', {
   createdBy: text('created_by').notNull(),
   createdAt: integer('created_at').notNull(),
   archivedAt: integer('archived_at'),
-})
+  // Optional logical reference to an org.openape.ai organization (ULID). NULL
+  // for CLI-created teams. Lets the Owner UI bind a tasks-team to a product/org
+  // deterministically instead of fragile created_by email matching. Not a DB FK
+  // — tasks is a separate database from org — so the link is app-enforced.
+  orgId: text('org_id'),
+}, t => [
+  index('idx_teams_org').on(t.orgId),
+])
 
 export const teamMembers = sqliteTable('team_members', {
   teamId: text('team_id').notNull(),
@@ -40,6 +47,10 @@ export const tasks = sqliteTable('tasks', {
   reminderMax: integer('reminder_max').notNull().default(5),
   contextUrl: text('context_url'),
   contextSummary: text('context_summary'),
+  // Idempotency key from the creator (e.g. a mail's Message-ID). When set, the
+  // create endpoint won't make a second open/doing task with the same key in
+  // the team — so a recurring triage run doesn't pile up duplicates.
+  dedupKey: text('dedup_key'),
   ownerEmail: text('owner_email').notNull(),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
@@ -51,6 +62,7 @@ export const tasks = sqliteTable('tasks', {
   index('idx_tasks_team_status').on(t.teamId, t.status),
   index('idx_tasks_assignee').on(t.assigneeEmail),
   index('idx_tasks_updated').on(t.updatedAt),
+  index('idx_tasks_dedup').on(t.teamId, t.dedupKey),
   // Hot index for the reminder worker — only rows with `remind_at` set.
   index('idx_tasks_remind_at').on(t.remindAt),
 ])

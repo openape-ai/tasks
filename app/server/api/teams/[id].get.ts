@@ -45,6 +45,7 @@ export default defineEventHandler(async (event) => {
     id: team.id,
     name: team.name,
     description: team.description,
+    org_id: team.orgId,
     archived_at: team.archivedAt,
     created_at: team.createdAt,
     members: members.map(m => ({ email: m.userEmail, role: m.role, joined_at: m.joinedAt })),

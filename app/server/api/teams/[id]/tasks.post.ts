@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { defineEventHandler, getRouterParam, readBody, setResponseStatus } from 'h3'
 import { ulid } from 'ulid'
 import { useDb } from '../../../database/drizzle'
@@ -24,6 +24,7 @@ interface CreateBody {
   reminder_max?: number
   context_url?: string | null
   context_summary?: string | null
+  dedup_key?: string | null
 }
 
 /**
@@ -75,6 +76,10 @@ export default defineEventHandler(async (event) => {
   if (contextSummary && contextSummary.length > 1000) {
     throw createProblemError({ status: 400, title: 'context_summary must be ≤ 1000 chars' })
   }
+  const dedupKey = body?.dedup_key?.trim() || null
+  if (dedupKey && dedupKey.length > 255) {
+    throw createProblemError({ status: 400, title: 'dedup_key must be ≤ 255 chars' })
+  }
 
   const db = useDb()
   const membership = await db
@@ -85,6 +90,26 @@ export default defineEventHandler(async (event) => {
   if (!membership) throw createProblemError({ status: 403, title: 'Not a team member' })
   if (membership.role === 'viewer') {
     throw createProblemError({ status: 403, title: 'Viewers cannot create tasks' })
+  }
+
+  // Idempotency: if a dedup_key is given and an open/doing task already carries
+  // it in this team, return that one instead of creating a duplicate. A
+  // done/archived task for the same key does not block a legitimately new task.
+  if (dedupKey) {
+    const dup = await db
+      .select()
+      .from(tasks)
+      .where(and(
+        eq(tasks.teamId, teamId),
+        eq(tasks.dedupKey, dedupKey),
+        isNull(tasks.deletedAt),
+        inArray(tasks.status, ['open', 'doing']),
+      ))
+      .get()
+    if (dup) {
+      setResponseStatus(event, 200)
+      return { ...serializeTask(dup), deduped: true }
+    }
   }
 
   // Append to end: sort_order = max(sort_order) + 1 for non-done tasks in this team.
@@ -112,6 +137,7 @@ export default defineEventHandler(async (event) => {
     reminderMax,
     contextUrl,
     contextSummary,
+    dedupKey,
     ownerEmail: caller.email,
     createdAt: now,
     updatedAt: now,

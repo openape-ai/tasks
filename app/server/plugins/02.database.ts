@@ -13,12 +13,19 @@ export default defineNitroPlugin(async () => {
       description TEXT,
       created_by TEXT NOT NULL,
       created_at INTEGER NOT NULL,
-      archived_at INTEGER
+      archived_at INTEGER,
+      org_id TEXT
     )`)
     // In-place add for pre-existing rows created under v0.1. Ignore if the
     // column is already there — sqlite has no IF NOT EXISTS for columns.
-    try { await db.run(sql`ALTER TABLE teams ADD COLUMN archived_at INTEGER`) }
-    catch { /* column already present */ }
+    for (const stmt of [
+      sql`ALTER TABLE teams ADD COLUMN archived_at INTEGER`,
+      sql`ALTER TABLE teams ADD COLUMN org_id TEXT`,
+    ]) {
+      try { await db.run(stmt) }
+      catch { /* column already present */ }
+    }
+    await db.run(sql`CREATE INDEX IF NOT EXISTS idx_teams_org ON teams(org_id)`)
 
     await db.run(sql`CREATE TABLE IF NOT EXISTS team_members (
       team_id TEXT NOT NULL,
@@ -62,10 +69,12 @@ export default defineNitroPlugin(async () => {
       sql`ALTER TABLE tasks ADD COLUMN reminder_max INTEGER NOT NULL DEFAULT 5`,
       sql`ALTER TABLE tasks ADD COLUMN context_url TEXT`,
       sql`ALTER TABLE tasks ADD COLUMN context_summary TEXT`,
+      sql`ALTER TABLE tasks ADD COLUMN dedup_key TEXT`,
     ]) {
       try { await db.run(stmt) }
       catch { /* column already present */ }
     }
+    await db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_dedup ON tasks(team_id, dedup_key)`)
     await db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_team ON tasks(team_id)`)
     await db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_team_status ON tasks(team_id, status)`)
     await db.run(sql`CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_email)`)
