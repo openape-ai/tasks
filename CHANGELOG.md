@@ -2,6 +2,24 @@
 
 All notable changes to `@openape/ape-tasks` (CLI) and the `tasks.openape.ai` app are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com).
 
+## [CLI 1.3.0 + app] — 2026-06-22
+
+### Added — Board lanes (Trello-light)
+
+A board now has configurable lanes (columns) — e.g. `Backlog → Ready → Doing → Review → Done`. Each lane maps to one status bucket (`open`, `doing`, `done`), so lanes are a finer view on top of `status`: moving a task to a lane sets its status to that lane's bucket. A team with no lanes configured shows three defaults (Open / Doing / Done), so existing boards are unchanged.
+
+- **Webapp:** lane tabs on the board (mobile-first), a lane selector in the task editor, and a lane editor in the list settings (rename / reorder / add / remove, plus a one-click dev-workflow preset).
+- **CLI:** `ape-tasks lanes [--team] [--json]` lists a team's lanes; `new` / `edit` accept `--lane <id|name>` to place or move a task; `list` accepts `--lane <id|name>` and `--assignee <email>`.
+- **API:** `GET /api/teams/:id` returns `lanes`; `PATCH /api/teams/:id` accepts a `lanes` array; tasks carry `lane_id` (additive on `--json`); `GET /api/teams/:id/tasks?lane=` filters by lane.
+
+`done` / `reopen` / `status` and the reminder worker are unchanged — they still key off `status`.
+
+## [CLI 1.2.0] — 2026-06-12
+
+### Added — idempotent task creation
+
+- **`new --dedup-key <key>`** — pass an idempotency key (e.g. a mail Message-ID). If an open/doing task with the same key already exists in the team, the existing task is returned instead of creating a duplicate. Keeps a recurring triage run from piling up duplicates.
+
 ## [CLI 1.1.0] — 2026-04-25
 
 ### Added — Reminder / Wiedervorlage fields (M2 of [plan 01KQ33AQDA64KQEKAHRT455W02](https://plans.openape.ai/p/01KQ33AQDA64KQEKAHRT455W02))

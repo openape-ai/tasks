@@ -27,6 +27,10 @@ the webapp; agents use the CLI; both see the same list.
 
 ## Features
 
+- **Board lanes.** Each board has configurable lanes (columns) such as
+  Backlog → Ready → Doing → Review → Done. Lanes refine the task status, so
+  `done` and reminders keep working; a board with no lanes set shows three
+  defaults. Tabs on mobile, a lane editor in the list settings.
 - **Teams as sharing boundary.** A task belongs to exactly one team. All
   members see and (by default) edit.
 - **Signed-JWT invite URLs.** Generate a link in the webapp or CLI, share it,
