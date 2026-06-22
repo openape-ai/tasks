@@ -92,7 +92,21 @@ const editAssignee = ref('')
 const editRemindLocal = ref('')
 const editContextUrl = ref('')
 const editContextSummary = ref('')
+const showReminder = ref(false)
 const showAdvanced = ref(false)
+
+const priorityLabels: Record<string, string> = { low: 'Niedrig', med: 'Mittel', high: 'Hoch' }
+// Compact one-line summary for the collapsed "Details" row so nothing hides silently.
+const detailsSummary = computed(() => {
+  const parts: string[] = []
+  if (editPriority.value) parts.push(priorityLabels[editPriority.value] ?? editPriority.value)
+  if (editDueLocal.value) parts.push(dueLabel(localInputToUnix(editDueLocal.value)) ?? '')
+  if (editAssignee.value) parts.push(editAssignee.value)
+  return parts.filter(Boolean).join(' · ')
+})
+const reminderSummary = computed(() =>
+  editRemindLocal.value ? (dueLabel(localInputToUnix(editRemindLocal.value)) ?? '') : '',
+)
 const saving = ref(false)
 const editError = ref('')
 
@@ -286,6 +300,7 @@ function openEdit(t: Task) {
   editContextSummary.value = t.context_summary ?? ''
   // Auto-expand "Mehr Details" when the task already has anything set there,
   // so editing existing fields doesn't require a discovery click.
+  showReminder.value = !!t.remind_at
   showAdvanced.value = !!(t.due_at || t.priority || t.assignee_email || t.context_summary)
   editError.value = ''
 }
@@ -872,161 +887,180 @@ const isEditOpen = computed({
          compact, sectioned, scrollable body, sticky save in the footer. -->
     <UModal v-model:open="isEditOpen" :dismissible="!saving">
       <template #content>
-        <div v-if="editingTask" class="flex flex-col w-full max-w-md max-h-[85vh] text-sm">
-          <!-- Sticky header — small, just identity. -->
-          <div class="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800 shrink-0">
-            <span class="text-xs font-medium text-zinc-400 uppercase tracking-wide">
-              Erinnerung
-            </span>
-            <UBadge
-              :color="editingTask.status === 'done' ? 'success' : 'neutral'"
-              variant="subtle"
-              size="xs"
-            >
-              {{ editingTask.status }}
-            </UBadge>
+        <div v-if="editingTask" class="flex flex-col w-full max-w-md max-h-[88vh] text-sm">
+          <!-- Grab handle — bottom-sheet affordance, no redundant chrome. -->
+          <div class="shrink-0 flex justify-center pt-2.5 pb-1">
+            <div class="h-1 w-9 rounded-full bg-zinc-700" />
           </div>
 
-          <!-- Scrollable body. Tight spacing, no chunky help blocks. -->
-          <div class="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-            <!-- Title + Notes block, like the iOS Reminders top card -->
-            <div class="space-y-1">
-              <UInput
-                v-model="editTitle"
-                maxlength="200"
-                :disabled="saving"
-                placeholder="Titel"
-                size="lg"
-                variant="none"
-                :ui="{ base: 'font-semibold px-0' }"
-              />
-              <UTextarea
-                v-model="editNotes"
-                :rows="2"
-                :disabled="saving"
-                placeholder="Notizen"
-                variant="none"
-                :ui="{ base: 'px-0 text-zinc-300 placeholder:text-zinc-600' }"
-              />
-              <UInput
-                v-model="editContextUrl"
-                maxlength="2048"
-                :disabled="saving"
-                placeholder="URL"
-                variant="none"
-                :ui="{ base: 'px-0 text-zinc-300 placeholder:text-zinc-600' }"
-              />
-            </div>
+          <!-- Scrollable body — content-first: the title and notes are the
+               focus; reminders and metadata fold away into tidy rows. -->
+          <div class="flex-1 overflow-y-auto px-5 pb-4 space-y-4">
+            <!-- Title — a 1-row auto-growing field so long titles wrap fully
+                 into view instead of being clipped. Enter is suppressed so it
+                 stays a single logical line. -->
+            <UTextarea
+              v-model="editTitle"
+              :rows="1"
+              autoresize
+              maxlength="200"
+              :disabled="saving"
+              placeholder="Titel"
+              variant="none"
+              :ui="{ base: 'text-xl font-semibold px-0 py-0 resize-none leading-snug' }"
+              @keydown.enter.prevent
+            />
 
-            <!-- Lane — move the task between board columns. -->
-            <div v-if="lanes.length" class="rounded-lg bg-zinc-900/50 px-3 py-2 space-y-2">
-              <span class="text-xs font-medium text-zinc-400">📋 Lane</span>
-              <div class="flex flex-wrap gap-1">
-                <UButton
+            <!-- Notes — the primary editing area: roomy and auto-growing -->
+            <UTextarea
+              v-model="editNotes"
+              :rows="3"
+              autoresize
+              :maxrows="14"
+              :disabled="saving"
+              placeholder="Notizen …"
+              variant="none"
+              :ui="{ base: 'px-0 py-0 text-[15px] leading-relaxed text-zinc-300 placeholder:text-zinc-600 resize-none' }"
+            />
+
+            <!-- Lane — primary board action, full-width pill row -->
+            <div v-if="lanes.length">
+              <p class="text-xs font-medium text-zinc-500 mb-1.5">
+                Lane
+              </p>
+              <div class="flex flex-wrap gap-1.5">
+                <button
                   v-for="l in lanes"
                   :key="l.id"
-                  size="xs"
-                  :variant="editLaneId === l.id ? 'solid' : 'outline'"
-                  :color="editLaneId === l.id ? 'primary' : 'neutral'"
+                  type="button"
+                  class="px-3 py-1.5 rounded-full text-sm font-medium transition disabled:opacity-50"
+                  :class="editLaneId === l.id ? 'bg-primary-500 text-white' : 'bg-zinc-800/80 text-zinc-300 hover:bg-zinc-800'"
                   :disabled="saving"
                   @click="editLaneId = l.id"
                 >
                   {{ l.name }}
-                </UButton>
+                </button>
               </div>
             </div>
 
-            <!-- Reminder block. Quick presets first, manual datetime second. -->
-            <div class="rounded-lg bg-zinc-900/50 px-3 py-2 space-y-2">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-medium text-zinc-400">🔔 Erinnerung</span>
-                <UButton
-                  v-if="editRemindLocal"
-                  size="xs"
-                  variant="ghost"
-                  color="neutral"
-                  icon="i-lucide-x"
-                  :disabled="saving"
-                  aria-label="Erinnerung entfernen"
-                  @click="editRemindLocal = ''"
-                />
-              </div>
-              <!-- Quick presets — like iOS Reminders' Heute/Morgen/Nächste Woche row -->
-              <div class="flex flex-wrap gap-1">
-                <UButton size="xs" variant="outline" color="neutral" :disabled="saving" @click="setRemindPreset('today-evening')">
-                  Heute Abend
-                </UButton>
-                <UButton size="xs" variant="outline" color="neutral" :disabled="saving" @click="setRemindPreset('tomorrow-morning')">
-                  Morgen früh
-                </UButton>
-                <UButton size="xs" variant="outline" color="neutral" :disabled="saving" @click="setRemindPreset('next-week')">
-                  Nächste Woche
-                </UButton>
-                <UButton size="xs" variant="outline" color="neutral" :disabled="saving" @click="setRemindPreset('plus-1h')">
-                  +1h
-                </UButton>
-              </div>
-              <UInput
-                v-model="editRemindLocal"
-                type="datetime-local"
-                :disabled="saving"
-                size="sm"
-              />
-              <p v-if="editRemindLocal" class="text-xs text-zinc-500">
-                Mail an {{ editAssignee || editingTask.owner_email }}<span v-if="editingTask.reminder_count > 0">. {{ editingTask.reminder_count }}/{{ editingTask.reminder_max }} bereits gesendet.</span>
-              </p>
-            </div>
-
-            <!-- Advanced — collapsed. iOS Reminders pattern: tap "Details" to expand. -->
-            <button
-              type="button"
-              class="flex items-center gap-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-300 select-none py-0.5"
-              @click="showAdvanced = !showAdvanced"
-            >
-              <UIcon :name="showAdvanced ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="size-3.5" />
-              Mehr Details
-            </button>
-
-            <div v-if="showAdvanced" class="space-y-2.5 pt-1">
-              <UFormField label="Deadline (nur Anzeige)" :ui="{ label: 'text-xs text-zinc-500' }">
-                <div class="flex items-center gap-1">
-                  <UInput v-model="editDueLocal" type="datetime-local" :disabled="saving" size="sm" class="flex-1" />
-                  <UButton
-                    v-if="editDueLocal"
-                    size="xs"
-                    variant="ghost"
-                    color="neutral"
-                    icon="i-lucide-x"
-                    :disabled="saving"
-                    aria-label="Deadline entfernen"
-                    @click="editDueLocal = ''"
-                  />
+            <!-- Foldaway rows — iOS-settings style: label left, summary right -->
+            <div class="border-t border-zinc-800/70 divide-y divide-zinc-800/70">
+              <!-- Erinnerung -->
+              <div>
+                <button
+                  type="button"
+                  class="w-full flex items-center gap-3 py-3 text-left"
+                  @click="showReminder = !showReminder"
+                >
+                  <UIcon name="i-lucide-bell" class="size-4 text-zinc-500 shrink-0" />
+                  <span class="flex-1 font-medium">Erinnerung</span>
+                  <template v-if="!showReminder">
+                    <span
+                      v-if="reminderSummary"
+                      class="text-sm"
+                      :class="editingTask.reminder_count > 0 ? 'text-amber-400' : 'text-primary-400'"
+                    >{{ reminderSummary }}</span>
+                    <span v-else class="text-sm text-zinc-500">Keine</span>
+                  </template>
+                  <UIcon :name="showReminder ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-4 text-zinc-500 shrink-0" />
+                </button>
+                <div v-if="showReminder" class="pb-3 space-y-2.5">
+                  <div class="grid grid-cols-2 gap-1.5">
+                    <UButton size="sm" block variant="soft" color="neutral" :disabled="saving" @click="setRemindPreset('today-evening')">
+                      Heute Abend
+                    </UButton>
+                    <UButton size="sm" block variant="soft" color="neutral" :disabled="saving" @click="setRemindPreset('tomorrow-morning')">
+                      Morgen früh
+                    </UButton>
+                    <UButton size="sm" block variant="soft" color="neutral" :disabled="saving" @click="setRemindPreset('next-week')">
+                      Nächste Woche
+                    </UButton>
+                    <UButton size="sm" block variant="soft" color="neutral" :disabled="saving" @click="setRemindPreset('plus-1h')">
+                      +1h
+                    </UButton>
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <UInput v-model="editRemindLocal" type="datetime-local" :disabled="saving" size="sm" class="flex-1" />
+                    <UButton
+                      v-if="editRemindLocal"
+                      size="xs"
+                      variant="ghost"
+                      color="neutral"
+                      icon="i-lucide-x"
+                      :disabled="saving"
+                      aria-label="Erinnerung entfernen"
+                      @click="editRemindLocal = ''"
+                    />
+                  </div>
+                  <p v-if="editRemindLocal" class="text-xs text-zinc-500">
+                    Mail an {{ editAssignee || editingTask.owner_email }}<span v-if="editingTask.reminder_count > 0">. {{ editingTask.reminder_count }}/{{ editingTask.reminder_max }} bereits gesendet.</span>
+                  </p>
+                  <UInput v-model="editContextSummary" maxlength="1000" :disabled="saving" size="sm" placeholder="Mail-Vorschau (eine Zeile)" class="w-full" />
+                  <UInput v-model="editContextUrl" maxlength="2048" :disabled="saving" size="sm" placeholder="Link zum Kontext (URL)" class="w-full" />
                 </div>
-              </UFormField>
+              </div>
 
-              <UFormField label="Priorität" :ui="{ label: 'text-xs text-zinc-500' }">
-                <div class="flex gap-1">
-                  <UButton
-                    v-for="opt in (['', 'low', 'med', 'high'] as const)"
-                    :key="opt || 'none'"
-                    size="xs"
-                    :variant="editPriority === opt ? 'solid' : 'outline'"
-                    :color="editPriority === opt ? 'primary' : 'neutral'"
-                    :disabled="saving"
-                    @click="editPriority = opt"
-                  >
-                    {{ opt === '' ? 'Keine' : opt === 'med' ? 'Mittel' : opt === 'low' ? 'Niedrig' : 'Hoch' }}
-                  </UButton>
+              <!-- Details -->
+              <div>
+                <button
+                  type="button"
+                  class="w-full flex items-center gap-3 py-3 text-left"
+                  @click="showAdvanced = !showAdvanced"
+                >
+                  <UIcon name="i-lucide-sliders-horizontal" class="size-4 text-zinc-500 shrink-0" />
+                  <span class="flex-1 font-medium">Details</span>
+                  <template v-if="!showAdvanced">
+                    <span v-if="detailsSummary" class="text-sm text-zinc-400 truncate max-w-40">{{ detailsSummary }}</span>
+                    <span v-else class="text-sm text-zinc-500">—</span>
+                  </template>
+                  <UIcon :name="showAdvanced ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-4 text-zinc-500 shrink-0" />
+                </button>
+                <div v-if="showAdvanced" class="pb-3 space-y-3">
+                  <div>
+                    <p class="text-xs font-medium text-zinc-500 mb-1.5">
+                      Priorität
+                    </p>
+                    <div class="grid grid-cols-4 gap-1.5">
+                      <UButton
+                        v-for="opt in (['', 'low', 'med', 'high'] as const)"
+                        :key="opt || 'none'"
+                        size="sm"
+                        block
+                        :variant="editPriority === opt ? 'solid' : 'soft'"
+                        :color="editPriority === opt ? 'primary' : 'neutral'"
+                        :disabled="saving"
+                        @click="editPriority = opt"
+                      >
+                        {{ opt === '' ? 'Keine' : opt === 'med' ? 'Mittel' : opt === 'low' ? 'Niedrig' : 'Hoch' }}
+                      </UButton>
+                    </div>
+                  </div>
+                  <div>
+                    <p class="text-xs font-medium text-zinc-500 mb-1.5">
+                      Deadline <span class="text-zinc-600">(nur Anzeige)</span>
+                    </p>
+                    <div class="flex items-center gap-1.5">
+                      <UInput v-model="editDueLocal" type="datetime-local" :disabled="saving" size="sm" class="flex-1" />
+                      <UButton
+                        v-if="editDueLocal"
+                        size="xs"
+                        variant="ghost"
+                        color="neutral"
+                        icon="i-lucide-x"
+                        :disabled="saving"
+                        aria-label="Deadline entfernen"
+                        @click="editDueLocal = ''"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <p class="text-xs font-medium text-zinc-500 mb-1.5">
+                      Zuständig
+                    </p>
+                    <UInput v-model="editAssignee" type="email" :disabled="saving" size="sm" :placeholder="editingTask.owner_email" class="w-full" />
+                  </div>
                 </div>
-              </UFormField>
-
-              <UFormField label="Empfänger der Mail" :ui="{ label: 'text-xs text-zinc-500' }">
-                <UInput v-model="editAssignee" type="email" :disabled="saving" size="sm" :placeholder="editingTask.owner_email" />
-              </UFormField>
-
-              <UFormField label="Mail-Vorschau (eine Zeile)" :ui="{ label: 'text-xs text-zinc-500' }">
-                <UInput v-model="editContextSummary" maxlength="1000" :disabled="saving" size="sm" placeholder="Wer und worum geht's" />
-              </UFormField>
+              </div>
             </div>
 
             <UAlert v-if="editError" color="error" :title="editError" @close="editError = ''" />
