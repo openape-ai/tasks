@@ -887,7 +887,7 @@ const isEditOpen = computed({
          compact, sectioned, scrollable body, sticky save in the footer. -->
     <UModal v-model:open="isEditOpen" :dismissible="!saving">
       <template #content>
-        <div v-if="editingTask" class="flex flex-col w-full max-w-md max-h-[88vh] text-sm">
+        <div v-if="editingTask" class="flex flex-col w-full max-h-[88vh] text-sm">
           <!-- Grab handle — bottom-sheet affordance, no redundant chrome. -->
           <div class="shrink-0 flex justify-center pt-2.5 pb-1">
             <div class="h-1 w-9 rounded-full bg-zinc-700" />
@@ -907,7 +907,8 @@ const isEditOpen = computed({
               :disabled="saving"
               placeholder="Titel"
               variant="none"
-              :ui="{ base: 'text-xl font-semibold px-0 py-0 resize-none leading-snug' }"
+              class="w-full"
+              :ui="{ base: 'w-full text-xl font-semibold px-0 py-0 resize-none leading-snug' }"
               @keydown.enter.prevent
             />
 
@@ -920,7 +921,8 @@ const isEditOpen = computed({
               :disabled="saving"
               placeholder="Notizen …"
               variant="none"
-              :ui="{ base: 'px-0 py-0 text-[15px] leading-relaxed text-zinc-300 placeholder:text-zinc-600 resize-none' }"
+              class="w-full"
+              :ui="{ base: 'w-full px-0 py-0 text-[15px] leading-relaxed text-zinc-300 placeholder:text-zinc-600 resize-none' }"
             />
 
             <!-- Lane — primary board action, full-width pill row -->
