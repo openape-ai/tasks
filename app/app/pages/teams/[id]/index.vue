@@ -912,17 +912,19 @@ const isEditOpen = computed({
               @keydown.enter.prevent
             />
 
-            <!-- Notes — the primary editing area: roomy and auto-growing -->
+            <!-- Notes — the primary editing area: grows with content but capped
+                 (~35vh) so a long description never eats the whole sheet; it
+                 scrolls inside once it hits the cap. -->
             <UTextarea
               v-model="editNotes"
               :rows="3"
               autoresize
-              :maxrows="14"
+              :maxrows="8"
               :disabled="saving"
               placeholder="Notizen …"
               variant="none"
               class="w-full"
-              :ui="{ base: 'w-full px-0 py-0 text-[15px] leading-relaxed text-zinc-300 placeholder:text-zinc-600 resize-none' }"
+              :ui="{ base: 'w-full px-0 py-0 text-[15px] leading-relaxed text-zinc-300 placeholder:text-zinc-600 resize-none max-h-[35vh] overflow-y-auto' }"
             />
 
             <!-- Lane — primary board action, full-width pill row -->
