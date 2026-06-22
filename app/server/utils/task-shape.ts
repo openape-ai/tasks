@@ -18,6 +18,7 @@ export function serializeTask(row: TaskRow) {
     priority: row.priority,
     due_at: row.dueAt,
     assignee_email: row.assigneeEmail,
+    lane_id: row.laneId,
     sort_order: row.sortOrder,
     remind_at: row.remindAt,
     reminder_count: row.reminderCount,

@@ -15,6 +15,7 @@ tasks; anyone in the team can read, editors and owners can write.
   priority:        null,             // low | med | high | null
   due_at:          null,             // unix seconds, null = no due date
   assignee_email:  null,
+  lane_id:         null,             // board lane id, null = first lane of its status bucket
   sort_order:      7,                // position in list, ascending
   owner_email:     "you@example.com",
   created_at:      1730000000,
@@ -36,6 +37,24 @@ All timestamps are unix seconds.
 
 Change via `ape-tasks status <id> <new>` or the shortcuts
 `ape-tasks done <id>` and `ape-tasks reopen <id>`.
+
+## Lanes
+
+A team's board has configurable lanes (Trello-light columns) — e.g.
+`Backlog → Ready → Doing → Review → Done`. Each lane maps to one status bucket
+(`open`, `doing`, `done`), so lanes refine `status` rather than replace it.
+Moving a task to a lane sets its status to that lane's bucket; `done` /
+`reopen` / `status` move the task to the matching lane. A team with no lanes
+configured shows three defaults (Open / Doing / Done); owners edit lanes in the
+webapp.
+
+- `ape-tasks lanes --team <id> [--json]` — list a team's lanes.
+- `ape-tasks new --lane <id|name>` — create a task in a lane.
+- `ape-tasks edit <id> --lane <id|name>` — move a task to a lane.
+- `ape-tasks list --lane <id|name>` — filter a list to one lane.
+
+`--lane` accepts a lane id or its name (case-insensitive). Combine
+`--lane` with `--assignee` to get the actionable subset for one worker.
 
 ## Priority
 

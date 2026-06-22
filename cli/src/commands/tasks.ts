@@ -18,6 +18,7 @@ interface Task {
   priority: TaskPriority | null
   due_at: number | null
   assignee_email: string | null
+  lane_id: string | null
   sort_order: number
   remind_at: number | null
   reminder_count: number
@@ -37,6 +38,18 @@ interface TeamListItem {
   name: string
   role: string
   open_task_count: number
+}
+
+interface Lane {
+  id: string
+  name: string
+  status: 'open' | 'doing' | 'done'
+}
+
+interface TeamDetail {
+  id: string
+  name: string
+  lanes: Lane[]
 }
 
 function parseStatusFilter(v: unknown): TaskStatus[] | undefined {
@@ -147,20 +160,23 @@ function formatRow(t: Task): string {
   return `${statusGlyph} ${t.id}  ${t.title}${prio}${due}${assignee}  [team ${t.team_id}]`
 }
 
-async function fetchAllTasks(endpoint: string | undefined, teamFilter: string | undefined, statuses: TaskStatus[]): Promise<Task[]> {
+async function fetchAllTasks(endpoint: string | undefined, teamFilter: string | undefined, statuses: TaskStatus[], lane?: string): Promise<Task[]> {
   const statusQuery = statuses.join(',')
+  const laneQuery = lane ? `&lane=${encodeURIComponent(lane)}` : ''
   if (teamFilter) {
-    return await apiCall<Task[]>('GET', `/api/teams/${teamFilter}/tasks?status=${statusQuery}`, { endpoint })
+    return await apiCall<Task[]>('GET', `/api/teams/${teamFilter}/tasks?status=${statusQuery}${laneQuery}`, { endpoint })
   }
+  // A lane only makes sense within one team — the server resolves it per team.
   const teams = await apiCall<TeamListItem[]>('GET', '/api/teams', { endpoint })
   const all: Task[] = []
   for (const team of teams) {
     try {
-      const rows = await apiCall<Task[]>('GET', `/api/teams/${team.id}/tasks?status=${statusQuery}`, { endpoint })
+      const rows = await apiCall<Task[]>('GET', `/api/teams/${team.id}/tasks?status=${statusQuery}${laneQuery}`, { endpoint })
       all.push(...rows)
     }
     catch {
-      // Skip teams the caller can no longer access rather than failing the whole list.
+      // Skip teams the caller can no longer access (or where the lane name does
+      // not exist) rather than failing the whole list.
     }
   }
   all.sort((a, b) => a.sort_order - b.sort_order || a.created_at - b.created_at)
@@ -193,24 +209,67 @@ async function resolveNotesInput(args: { notes?: unknown, 'notes-from-stdin'?: u
  *   [ ] 01HX...  Call the dentist  !!  (due tomorrow)  [team 01HY...]
  *
  *   $ ape-tasks list --team 01HXX... --status open,doing --json | jq '.[].title'
+ *
+ *   # The actionable gate for an automated loop: one lane + one assignee.
+ *   $ ape-tasks list --team 01HXX... --lane Ready --assignee bot@x.eco --json
  */
 export const listCommand = defineCommand({
   meta: {
     name: 'list',
-    description: 'List tasks. Default filter: open,doing. Use --status to change.',
+    description: 'List tasks. Default filter: open,doing. Use --status / --lane / --assignee to narrow.',
   },
   args: {
     team: { type: 'string', description: 'Team (list) ULID to filter by.' },
     status: { type: 'string', description: 'Comma-separated statuses (default open,doing). Options: open|doing|done|archived.' },
+    lane: { type: 'string', description: 'Board lane to filter by (id or name, e.g. "Ready"). Needs --team unless one lane name is unique.' },
+    assignee: { type: 'string', description: 'Filter to tasks assigned to this email.' },
     json: { type: 'boolean', description: 'JSON output.' },
     endpoint: { type: 'string', description: 'Override tasks endpoint.' },
   },
   async run({ args }) {
     const statuses = parseStatusFilter(args.status) ?? (['open', 'doing'] as TaskStatus[])
-    const rows = await fetchAllTasks(args.endpoint, args.team, statuses)
+    let rows = await fetchAllTasks(args.endpoint, args.team, statuses, args.lane)
+    if (typeof args.assignee === 'string' && args.assignee.trim()) {
+      const who = args.assignee.trim().toLowerCase()
+      rows = rows.filter(t => (t.assignee_email ?? '').toLowerCase() === who)
+    }
     if (args.json) { printJson(rows); return }
     if (rows.length === 0) { printLine('(no tasks)'); return }
     for (const t of rows) printLine(formatRow(t))
+  },
+})
+
+/**
+ * List the board lanes of a team (the configurable Trello-light columns).
+ *
+ * EXAMPLES
+ *   $ ape-tasks lanes --team 01HXX...
+ *   Backlog   open
+ *   Ready     open
+ *   Doing     doing
+ *   Review    doing
+ *   Done      done
+ *
+ *   $ ape-tasks lanes --team 01HXX... --json | jq '.[].name'
+ */
+export const lanesCommand = defineCommand({
+  meta: {
+    name: 'lanes',
+    description: 'List a team\'s board lanes (id, name, status bucket).',
+  },
+  args: {
+    team: { type: 'string', description: 'Team (list) ULID. Falls back to `teams use <id>` default.' },
+    json: { type: 'boolean', description: 'JSON output.' },
+    endpoint: { type: 'string', description: 'Override tasks endpoint.' },
+  },
+  async run({ args }) {
+    const teamId = resolveTeamId(args.team, args.endpoint)
+    const detail = await apiCall<TeamDetail>('GET', `/api/teams/${teamId}`, { endpoint: args.endpoint })
+    const lanes = detail.lanes ?? []
+    if (args.json) { printJson(lanes); return }
+    if (lanes.length === 0) { printLine('(no lanes)'); return }
+    const pad = Math.max(...lanes.map(l => l.name.length))
+    for (const l of lanes) printLine(`${l.name.padEnd(pad)}  ${l.status}  ${l.id}`)
   },
 })
 
@@ -286,6 +345,7 @@ export const newCommand = defineCommand({
     'notes-from-stdin': { type: 'boolean', description: 'Read notes from stdin.' },
     'notes-from-file': { type: 'string', description: 'Read notes from a file.' },
     status: { type: 'string', description: 'open|doing|done|archived (default open).' },
+    lane: { type: 'string', description: 'Board lane to place the task in (id or name). Sets status to the lane\'s bucket.' },
     priority: { type: 'string', description: 'low|med|high (default none).' },
     due: { type: 'string', description: 'ISO 8601 or shorthand (+2h, +1d, +30m, +2w).' },
     assignee: { type: 'string', description: 'Assignee email.' },
@@ -314,6 +374,7 @@ export const newCommand = defineCommand({
     const notes = await resolveNotesInput(args) ?? ''
 
     const body: Record<string, unknown> = { title: args.title, notes, status }
+    if (typeof args.lane === 'string' && args.lane.trim()) body.lane_id = args.lane.trim()
     if (priority !== undefined) body.priority = priority
     if (dueAt !== undefined) body.due_at = dueAt
     if (assignee !== undefined) body.assignee_email = assignee
@@ -356,6 +417,7 @@ export const editCommand = defineCommand({
     taskId: { type: 'positional', required: true, description: 'Task ULID.' },
     title: { type: 'string', description: 'New title.' },
     status: { type: 'string', description: 'New status (open|doing|done|archived).' },
+    lane: { type: 'string', description: 'Move to a board lane (id or name, e.g. "Review"). Sets status to the lane\'s bucket.' },
     priority: { type: 'string', description: 'low|med|high, or "none" to clear.' },
     due: { type: 'string', description: 'ISO 8601 / shorthand (+2h, +1d), or "none" to clear.' },
     assignee: { type: 'string', description: 'Assignee email, or "none" to clear.' },
@@ -379,6 +441,7 @@ export const editCommand = defineCommand({
       }
       patch.status = args.status
     }
+    if (typeof args.lane === 'string' && args.lane.trim()) patch.lane_id = args.lane.trim()
     const priority = parsePriority(args.priority)
     if (priority !== undefined) patch.priority = priority
     const due = parseDue(args.due)

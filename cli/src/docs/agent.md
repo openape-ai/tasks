@@ -85,6 +85,46 @@ ape-tasks reopen 01H...
 ape-tasks rm 01H...
 ```
 
+## Board lanes
+
+A team's board has configurable lanes (columns) — e.g. `Backlog → Ready →
+Doing → Review → Done`. Each lane maps to one status bucket (`open`, `doing`,
+or `done`), so lanes are a finer view on top of `status`: moving a task to a
+lane also sets its status to that lane's bucket. A team with no lanes
+configured shows three defaults (Open / Doing / Done). Owners edit lanes in the
+webapp.
+
+```
+# See a team's lanes
+ape-tasks lanes --team 01H... --json
+# [{"id":"01H...","name":"Ready","status":"open"}, ...]
+
+# Place a new task directly in a lane (status follows the lane's bucket)
+ape-tasks new --team 01H... --title "Wire up X" --lane Ready
+
+# Move a task between lanes (id or name, case-insensitive)
+ape-tasks edit 01H... --lane Review        # → status becomes doing
+ape-tasks done 01H...                        # → moves to the Done lane
+
+# Filter a list to one lane (id or name)
+ape-tasks list --team 01H... --lane Ready --json
+```
+
+`done` / `reopen` keep working unchanged — they set status and move the task to
+the matching lane. `--lane` accepts a lane id or its name.
+
+### Driving an automated loop off a lane
+
+The clean "what should I work on now" gate is **one lane + one assignee**:
+
+```
+ape-tasks list --team 01H... --lane Ready --assignee bot@example.com --json
+```
+
+Move a task to a "Doing"-bucket lane to mark it in progress, and to a later
+lane (or back) to hand it on. The `--json` shape carries `lane_id`; resolve
+names↔ids once via `ape-tasks lanes --json`.
+
 ## Invite other agents or humans
 
 ```
@@ -110,6 +150,7 @@ the same team and see each other's tasks.
   "priority":        null | "low" | "med" | "high",
   "due_at":          null,
   "assignee_email":  null,
+  "lane_id":         null,
   "sort_order":      7,
   "owner_email":     "creator@example.com",
   "created_at":      1735689600,

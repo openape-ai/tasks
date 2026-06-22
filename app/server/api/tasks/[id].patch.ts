@@ -1,9 +1,10 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import { defineEventHandler, getRouterParam, readBody } from 'h3'
 import { useDb } from '../../database/drizzle'
-import { tasks, teamMembers } from '../../database/schema'
+import { tasks, teamMembers, teams } from '../../database/schema'
 import { requireCaller } from '../../utils/require-auth'
 import { createProblemError } from '../../utils/problem'
+import { laneById, laneForStatus, resolveLanes } from '../../utils/lanes'
 import {
   serializeTask,
   VALID_PRIORITY,
@@ -19,6 +20,8 @@ interface PatchBody {
   priority?: string | null
   due_at?: number | null
   assignee_email?: string | null
+  /** Move to a board lane (id or name). Also sets status to the lane's bucket. */
+  lane_id?: string | null
   sort_order?: number
   remind_at?: number | null
   reminder_max?: number
@@ -35,6 +38,7 @@ type TaskPatch = Partial<{
   priority: TaskPriority | null
   dueAt: number | null
   assigneeEmail: string | null
+  laneId: string | null
   sortOrder: number
   completedAt: number | null
   remindAt: number | null
@@ -123,7 +127,7 @@ export default defineEventHandler(async (event) => {
     patch.lastReminderAt = null
   }
 
-  if (Object.keys(patch).length === 0) {
+  if (Object.keys(patch).length === 0 && body.lane_id === undefined) {
     throw createProblemError({ status: 400, title: 'No fields to update' })
   }
 
@@ -142,6 +146,27 @@ export default defineEventHandler(async (event) => {
     .get()
   if (!membership) throw createProblemError({ status: 403, title: 'Not a team member' })
   if (membership.role === 'viewer') throw createProblemError({ status: 403, title: 'Viewers cannot edit tasks' })
+
+  // Lane move: resolve against the team's lanes. Moving to a lane also sets
+  // status to that lane's bucket (lane_id wins over a passed status). When only
+  // status changed, snap lane_id to the first lane of the new bucket so the two
+  // axes never drift apart.
+  if (body.lane_id !== undefined || patch.status !== undefined) {
+    const team = await db.select({ lanes: teams.lanes }).from(teams).where(eq(teams.id, task.teamId)).get()
+    const lanes = resolveLanes(team?.lanes)
+    if (typeof body.lane_id === 'string' && body.lane_id.trim()) {
+      const lane = laneById(lanes, body.lane_id)
+      if (!lane) throw createProblemError({ status: 400, title: 'lane not found in this team' })
+      patch.laneId = lane.id
+      patch.status = lane.status
+    }
+    else if (body.lane_id === null || body.lane_id === '') {
+      patch.laneId = null
+    }
+    else if (patch.status !== undefined) {
+      patch.laneId = laneForStatus(lanes, patch.status, task.laneId)
+    }
+  }
 
   const now = Math.floor(Date.now() / 1000)
   if (patch.status !== undefined) {

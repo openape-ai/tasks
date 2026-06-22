@@ -22,7 +22,8 @@ ape-tasks <command> [args] [flags]
 | Teams  | `teams invites <team-id>`            | List active invites.                             |
 | Teams  | `teams revoke-invite <invite-id>`    | Revoke an invite.                                |
 | Invite | `accept <url-or-token>`              | Accept an invite URL or token.                   |
-| Tasks  | `list [--team] [--status]`           | List tasks (default statuses: open,doing).       |
+| Tasks  | `list [--team] [--status] [--lane] [--assignee]` | List tasks (default statuses: open,doing). |
+| Tasks  | `lanes [--team]`                     | List a team's board lanes (id, name, status).    |
 | Tasks  | `show <id>`                          | Print task summary (or JSON with --json).        |
 | Tasks  | `new --title "..."`                  | Create a task. See "Task fields" below.          |
 | Tasks  | `edit <id> …`                        | Patch any field; use `none` to clear optional.   |
@@ -43,6 +44,9 @@ ape-tasks <command> [args] [flags]
 - `--due <when>` — ISO 8601 (`2026-05-01T09:00`, `2026-05-01`) or shorthand
   (`+30m`, `+2h`, `+1d`, `+2w`). Use `none` to clear.
 - `--assignee <email>` — or `none` to clear.
+- `--lane <id|name>` — place (`new`) or move (`edit`) the task into a board
+  lane. Sets status to the lane's bucket. Accepts a lane id or its name
+  (case-insensitive). See `ape-tasks docs tasks` → Lanes.
 
 ## Global flags
 

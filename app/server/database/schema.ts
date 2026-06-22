@@ -12,6 +12,10 @@ export const teams = sqliteTable('teams', {
   // deterministically instead of fragile created_by email matching. Not a DB FK
   // — tasks is a separate database from org — so the link is app-enforced.
   orgId: text('org_id'),
+  // Configurable board lanes (Trello-light), stored as a JSON array of
+  // { id, name, status } where status ∈ open|doing|done. NULL → default lanes
+  // (Open/Doing/Done). See server/utils/lanes.ts.
+  lanes: text('lanes'),
 }, t => [
   index('idx_teams_org').on(t.orgId),
 ])
@@ -35,6 +39,9 @@ export const tasks = sqliteTable('tasks', {
   priority: text('priority', { enum: ['low', 'med', 'high'] }),
   dueAt: integer('due_at'),
   assigneeEmail: text('assignee_email'),
+  // Board lane this task sits in (refers to a lane id in its team's `lanes`).
+  // NULL → falls into the first lane of its `status` bucket. See lanes.ts.
+  laneId: text('lane_id'),
   sortOrder: integer('sort_order').notNull().default(0),
   // Reminder / Wiedervorlage. `remindAt` triggers the worker to email the
   // assignee; if the task stays open past `lastReminderAt + 24h`, it
@@ -61,6 +68,7 @@ export const tasks = sqliteTable('tasks', {
   index('idx_tasks_team').on(t.teamId),
   index('idx_tasks_team_status').on(t.teamId, t.status),
   index('idx_tasks_assignee').on(t.assigneeEmail),
+  index('idx_tasks_lane').on(t.teamId, t.laneId),
   index('idx_tasks_updated').on(t.updatedAt),
   index('idx_tasks_dedup').on(t.teamId, t.dedupKey),
   // Hot index for the reminder worker — only rows with `remind_at` set.

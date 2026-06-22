@@ -4,6 +4,7 @@ import { useDb } from '../../database/drizzle'
 import { tasks, teamMembers, teams } from '../../database/schema'
 import { requireCaller } from '../../utils/require-auth'
 import { createProblemError } from '../../utils/problem'
+import { resolveLanes } from '../../utils/lanes'
 
 /**
  * GET /api/teams/:id — team detail (only if caller is a member).
@@ -48,6 +49,7 @@ export default defineEventHandler(async (event) => {
     org_id: team.orgId,
     archived_at: team.archivedAt,
     created_at: team.createdAt,
+    lanes: resolveLanes(team.lanes),
     members: members.map(m => ({ email: m.userEmail, role: m.role, joined_at: m.joinedAt })),
     task_count: counts,
   }

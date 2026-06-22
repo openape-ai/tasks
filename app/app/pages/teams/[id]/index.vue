@@ -8,11 +8,14 @@ const teamId = computed(() => String(route.params.id))
 
 interface TeamMember { email: string, role: 'owner' | 'editor' | 'viewer', joined_at: number }
 interface TaskCount { open: number, doing: number, done: number, archived: number, total: number }
+type LaneStatus = 'open' | 'doing' | 'done'
+interface Lane { id: string, name: string, status: LaneStatus }
 interface TeamDetail {
   id: string
   name: string
   description: string | null
   created_at: number
+  lanes: Lane[]
   members: TeamMember[]
   task_count: TaskCount
 }
@@ -28,6 +31,7 @@ interface Task {
   priority: TaskPriority
   due_at: number | null
   assignee_email: string | null
+  lane_id: string | null
   sort_order: number
   remind_at: number | null
   reminder_count: number
@@ -61,7 +65,6 @@ const newTitle = ref('')
 const adding = ref(false)
 const addError = ref('')
 
-const showCompleted = ref(false)
 const showMembers = ref(false)
 const showInvites = ref(false)
 
@@ -81,6 +84,7 @@ const copied = ref(false)
 // Task-edit sheet state
 const editingTask = ref<Task | null>(null)
 const editTitle = ref('')
+const editLaneId = ref('')
 const editNotes = ref('')
 const editDueLocal = ref('')
 const editPriority = ref<'' | 'low' | 'med' | 'high'>('')
@@ -96,19 +100,75 @@ const editError = ref('')
 const showListSettings = ref(false)
 const settingsName = ref('')
 const settingsDescription = ref('')
+const settingsLanes = ref<Lane[]>([])
 const settingsError = ref('')
 const settingsSaving = ref(false)
 const settingsDeleting = ref(false)
 
-const openTasks = computed(() =>
+const laneStatusOptions: { label: string, value: LaneStatus }[] = [
+  { label: 'Offen', value: 'open' },
+  { label: 'In Arbeit', value: 'doing' },
+  { label: 'Fertig', value: 'done' },
+]
+
+function addLane() {
+  settingsLanes.value.push({ id: '', name: '', status: 'open' })
+}
+function removeLane(idx: number) {
+  settingsLanes.value.splice(idx, 1)
+}
+function moveLane(idx: number, dir: -1 | 1) {
+  const to = idx + dir
+  if (to < 0 || to >= settingsLanes.value.length) return
+  const arr = settingsLanes.value
+  const moved = arr[idx]!
+  arr.splice(idx, 1)
+  arr.splice(to, 0, moved)
+}
+function applyDevPreset() {
+  settingsLanes.value = [
+    { id: '', name: 'Backlog', status: 'open' },
+    { id: '', name: 'Ready', status: 'open' },
+    { id: '', name: 'Doing', status: 'doing' },
+    { id: '', name: 'Review', status: 'doing' },
+    { id: '', name: 'Done', status: 'done' },
+  ]
+}
+
+const lanes = computed<Lane[]>(() => detail.value?.lanes ?? [])
+const activeLaneId = ref('')
+
+// Mirror of server/utils/lanes.ts effectiveLaneId: an explicit, still-valid
+// lane wins; otherwise a task falls into the first lane of its status bucket.
+function effectiveLane(t: Task): string {
+  if (t.lane_id && lanes.value.some(l => l.id === t.lane_id)) return t.lane_id
+  const bucket: LaneStatus = t.status === 'archived' ? 'done' : t.status
+  const match = lanes.value.find(l => l.status === bucket) ?? lanes.value[0]
+  return match?.id ?? ''
+}
+
+const activeLaneName = computed(() => lanes.value.find(l => l.id === activeLaneId.value)?.name ?? '')
+const isDoneLane = computed(() => lanes.value.find(l => l.id === activeLaneId.value)?.status === 'done')
+
+const laneCounts = computed<Record<string, number>>(() => {
+  const counts: Record<string, number> = {}
+  for (const l of lanes.value) counts[l.id] = 0
+  for (const t of tasks.value) {
+    if (t.status === 'archived') continue
+    const id = effectiveLane(t)
+    if (id in counts) counts[id] = (counts[id] ?? 0) + 1
+  }
+  return counts
+})
+
+const activeLaneTasks = computed(() =>
   tasks.value
-    .filter(t => t.status === 'open' || t.status === 'doing')
-    .sort((a, b) => a.sort_order - b.sort_order || a.created_at - b.created_at),
-)
-const completedTasks = computed(() =>
-  tasks.value
-    .filter(t => t.status === 'done')
-    .sort((a, b) => (b.completed_at ?? 0) - (a.completed_at ?? 0)),
+    .filter(t => t.status !== 'archived' && effectiveLane(t) === activeLaneId.value)
+    .sort((a, b) => {
+      // Done lanes read newest-completed-first; others by manual order.
+      if (isDoneLane.value) return (b.completed_at ?? 0) - (a.completed_at ?? 0)
+      return a.sort_order - b.sort_order || a.created_at - b.created_at
+    }),
 )
 
 const callerRole = computed<'owner' | 'editor' | 'viewer' | null>(() => {
@@ -131,6 +191,11 @@ onMounted(async () => {
 async function loadDetail() {
   try {
     detail.value = await ($fetch as any)(`/api/teams/${teamId.value}`) as TeamDetail
+    // Keep the active lane valid: default to the first lane, preserve a still-
+    // existing selection across reloads (e.g. after editing lanes).
+    if (!lanes.value.some(l => l.id === activeLaneId.value)) {
+      activeLaneId.value = lanes.value[0]?.id ?? ''
+    }
   }
   catch (err: unknown) {
     const e = err as { data?: { title?: string } }
@@ -157,7 +222,7 @@ async function addTask() {
   try {
     const created = await ($fetch as any)(`/api/teams/${teamId.value}/tasks`, {
       method: 'POST',
-      body: { title },
+      body: { title, lane_id: activeLaneId.value || undefined },
     }) as Task
     tasks.value.push(created)
     newTitle.value = ''
@@ -211,6 +276,7 @@ function openEdit(t: Task) {
   if (!canEdit.value) return
   editingTask.value = t
   editTitle.value = t.title
+  editLaneId.value = effectiveLane(t)
   editNotes.value = t.notes
   editDueLocal.value = t.due_at ? unixToLocalInput(t.due_at) : ''
   editPriority.value = t.priority ?? ''
@@ -257,6 +323,11 @@ async function saveEdit() {
         remind_at: remind,
         context_url: contextUrl,
         context_summary: contextSummary,
+        // Lane move (server derives status from the lane's bucket). Only send
+        // when it actually changed, so a plain field edit never moves the task.
+        ...(editingTask.value && editLaneId.value && editLaneId.value !== effectiveLane(editingTask.value)
+          ? { lane_id: editLaneId.value }
+          : {}),
       },
     }) as Task
     const idx = tasks.value.findIndex(x => x.id === t.id)
@@ -295,6 +366,7 @@ function openListSettings() {
   if (!detail.value) return
   settingsName.value = detail.value.name
   settingsDescription.value = detail.value.description ?? ''
+  settingsLanes.value = (detail.value.lanes ?? []).map(l => ({ ...l }))
   settingsError.value = ''
   showListSettings.value = true
 }
@@ -306,6 +378,13 @@ async function saveListSettings() {
     settingsError.value = 'Name required'
     return
   }
+  const lanes = settingsLanes.value
+    .map(l => ({ id: l.id || undefined, name: l.name.trim(), status: l.status }))
+    .filter(l => l.name.length > 0)
+  if (lanes.length === 0) {
+    settingsError.value = 'Mindestens eine Lane erforderlich'
+    return
+  }
   settingsSaving.value = true
   settingsError.value = ''
   try {
@@ -314,9 +393,10 @@ async function saveListSettings() {
       body: {
         name,
         description: settingsDescription.value.trim() || null,
+        lanes,
       },
     })
-    await loadDetail()
+    await Promise.all([loadDetail(), loadTasks()])
     showListSettings.value = false
   }
   catch (err: unknown) {
@@ -578,7 +658,27 @@ const isEditOpen = computed({
           </div>
         </div>
 
-        <!-- Add task -->
+        <!-- Lane tabs — switch the visible board column. Horizontally
+             scrollable so many lanes stay reachable on a phone. -->
+        <div class="mb-4 -mx-4 px-4 overflow-x-auto">
+          <div class="flex gap-1.5 min-w-min">
+            <button
+              v-for="l in lanes"
+              :key="l.id"
+              type="button"
+              class="shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition whitespace-nowrap"
+              :class="l.id === activeLaneId
+                ? 'bg-primary-500 text-white'
+                : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200'"
+              @click="activeLaneId = l.id"
+            >
+              {{ l.name }}
+              <span class="ml-1 text-xs opacity-80">{{ laneCounts[l.id] ?? 0 }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Add task into the active lane -->
         <form
           v-if="canEdit"
           class="mb-4 flex items-center gap-2"
@@ -596,32 +696,37 @@ const isEditOpen = computed({
             v-model="newTitle"
             type="text"
             maxlength="200"
-            placeholder="New task"
+            :placeholder="activeLaneName ? `New task in ${activeLaneName}` : 'New task'"
             class="flex-1 bg-transparent border-0 outline-none text-lg placeholder:text-zinc-600"
             :disabled="adding"
           >
         </form>
         <UAlert v-if="addError" color="error" :title="addError" class="mb-3" @close="addError = ''" />
 
-        <!-- Open tasks -->
+        <!-- Active lane tasks -->
         <section class="mb-8">
-          <div v-if="openTasks.length === 0 && completedTasks.length === 0" class="text-center py-10 text-zinc-500">
+          <div v-if="activeLaneTasks.length === 0" class="text-center py-10 text-zinc-500">
             <UIcon name="i-lucide-check-check" class="size-10 mx-auto mb-2 opacity-40" />
-            <p>No tasks yet</p>
+            <p>Keine Tasks in dieser Lane</p>
           </div>
           <ul class="divide-y divide-zinc-900">
             <li
-              v-for="t in openTasks"
+              v-for="t in activeLaneTasks"
               :key="t.id"
               class="group flex items-center gap-3 py-3 min-h-[48px]"
             >
               <button
                 type="button"
-                class="size-6 shrink-0 rounded-full border-2 border-zinc-600 hover:border-primary-500 transition flex items-center justify-center"
+                class="size-6 shrink-0 rounded-full border-2 transition flex items-center justify-center"
+                :class="t.status === 'done'
+                  ? 'border-primary-500 bg-primary-500'
+                  : 'border-zinc-600 hover:border-primary-500'"
                 :disabled="!canEdit"
-                :aria-label="`Mark ${t.title} as done`"
+                :aria-label="t.status === 'done' ? `Mark ${t.title} as open` : `Mark ${t.title} as done`"
                 @click.stop="toggleDone(t)"
-              />
+              >
+                <UIcon v-if="t.status === 'done'" name="i-lucide-check" class="size-4 text-white" />
+              </button>
 
               <button
                 type="button"
@@ -630,8 +735,8 @@ const isEditOpen = computed({
                 :aria-label="`Edit ${t.title}`"
                 @click="openEdit(t)"
               >
-                <span class="block truncate text-base">{{ t.title }}</span>
-                <span v-if="t.due_at || t.remind_at || t.assignee_email || t.priority" class="flex items-center gap-2 mt-0.5">
+                <span class="block truncate text-base" :class="t.status === 'done' ? 'text-zinc-500 line-through' : ''">{{ t.title }}</span>
+                <span v-if="t.status !== 'done' && (t.due_at || t.remind_at || t.assignee_email || t.priority)" class="flex items-center gap-2 mt-0.5">
                   <span
                     v-if="t.due_at"
                     class="text-xs"
@@ -658,55 +763,6 @@ const isEditOpen = computed({
                     · {{ t.assignee_email }}
                   </span>
                 </span>
-              </button>
-
-              <button
-                v-if="canEdit"
-                type="button"
-                class="size-8 rounded-full text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition opacity-0 group-hover:opacity-100 focus:opacity-100 flex items-center justify-center"
-                :aria-label="`Delete ${t.title}`"
-                @click.stop="deleteTaskQuick(t.id)"
-              >
-                <UIcon name="i-lucide-trash-2" class="size-4" />
-              </button>
-            </li>
-          </ul>
-        </section>
-
-        <!-- Completed -->
-        <section v-if="completedTasks.length > 0" class="mb-8">
-          <button
-            type="button"
-            class="flex items-center gap-2 w-full py-2 text-sm font-medium text-zinc-400 hover:text-zinc-200"
-            @click="showCompleted = !showCompleted"
-          >
-            <UIcon :name="showCompleted ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="size-4" />
-            Completed · {{ completedTasks.length }}
-          </button>
-          <ul v-if="showCompleted" class="divide-y divide-zinc-900 mt-1">
-            <li
-              v-for="t in completedTasks"
-              :key="t.id"
-              class="group flex items-center gap-3 py-3 min-h-[48px]"
-            >
-              <button
-                type="button"
-                class="size-6 shrink-0 rounded-full border-2 border-primary-500 bg-primary-500 flex items-center justify-center"
-                :disabled="!canEdit"
-                :aria-label="`Mark ${t.title} as open`"
-                @click.stop="toggleDone(t)"
-              >
-                <UIcon name="i-lucide-check" class="size-4 text-white" />
-              </button>
-
-              <button
-                type="button"
-                class="min-w-0 flex-1 text-left text-zinc-500 line-through truncate cursor-pointer"
-                :class="{ 'cursor-default': !canEdit }"
-                :aria-label="`Edit ${t.title}`"
-                @click="openEdit(t)"
-              >
-                {{ t.title }}
               </button>
 
               <button
@@ -862,6 +918,24 @@ const isEditOpen = computed({
               />
             </div>
 
+            <!-- Lane — move the task between board columns. -->
+            <div v-if="lanes.length" class="rounded-lg bg-zinc-900/50 px-3 py-2 space-y-2">
+              <span class="text-xs font-medium text-zinc-400">📋 Lane</span>
+              <div class="flex flex-wrap gap-1">
+                <UButton
+                  v-for="l in lanes"
+                  :key="l.id"
+                  size="xs"
+                  :variant="editLaneId === l.id ? 'solid' : 'outline'"
+                  :color="editLaneId === l.id ? 'primary' : 'neutral'"
+                  :disabled="saving"
+                  @click="editLaneId = l.id"
+                >
+                  {{ l.name }}
+                </UButton>
+              </div>
+            </div>
+
             <!-- Reminder block. Quick presets first, manual datetime second. -->
             <div class="rounded-lg bg-zinc-900/50 px-3 py-2 space-y-2">
               <div class="flex items-center justify-between">
@@ -986,14 +1060,14 @@ const isEditOpen = computed({
       <template #content>
         <div class="p-6 space-y-4 max-w-md">
           <h3 class="text-lg font-semibold">
-            List settings
+            Listen-Einstellungen
           </h3>
 
           <UFormField label="Name" required>
             <UInput v-model="settingsName" maxlength="120" size="lg" :disabled="settingsSaving || settingsDeleting" />
           </UFormField>
 
-          <UFormField label="Description">
+          <UFormField label="Beschreibung">
             <UTextarea
               v-model="settingsDescription"
               :rows="3"
@@ -1003,20 +1077,88 @@ const isEditOpen = computed({
             />
           </UFormField>
 
+          <!-- Lane editor: name + status bucket, reorder, add/remove. -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-medium">Lanes</span>
+              <UButton size="xs" variant="ghost" color="neutral" :disabled="settingsSaving || settingsDeleting" @click="applyDevPreset">
+                Dev-Workflow-Preset
+              </UButton>
+            </div>
+            <p class="text-xs text-zinc-500">
+              Spalten des Boards. Jede Lane gehört zu einem Status (Offen / In Arbeit / Fertig).
+              Mindestens je eine „Offen"- und „Fertig"-Lane. Eine Lane zu entfernen schiebt ihre
+              Tasks in die erste Lane desselben Status.
+            </p>
+            <div
+              v-for="(l, idx) in settingsLanes"
+              :key="idx"
+              class="flex items-center gap-1.5"
+            >
+              <div class="flex flex-col">
+                <button
+                  type="button"
+                  class="size-4 text-zinc-500 hover:text-zinc-200 disabled:opacity-30 flex items-center justify-center"
+                  :disabled="idx === 0 || settingsSaving"
+                  aria-label="Lane nach oben"
+                  @click="moveLane(idx, -1)"
+                >
+                  <UIcon name="i-lucide-chevron-up" class="size-4" />
+                </button>
+                <button
+                  type="button"
+                  class="size-4 text-zinc-500 hover:text-zinc-200 disabled:opacity-30 flex items-center justify-center"
+                  :disabled="idx === settingsLanes.length - 1 || settingsSaving"
+                  aria-label="Lane nach unten"
+                  @click="moveLane(idx, 1)"
+                >
+                  <UIcon name="i-lucide-chevron-down" class="size-4" />
+                </button>
+              </div>
+              <UInput
+                v-model="l.name"
+                maxlength="40"
+                size="sm"
+                placeholder="Lane-Name"
+                class="flex-1"
+                :disabled="settingsSaving || settingsDeleting"
+              />
+              <USelect
+                v-model="l.status"
+                :items="laneStatusOptions"
+                size="sm"
+                class="w-28"
+                :disabled="settingsSaving || settingsDeleting"
+              />
+              <button
+                type="button"
+                class="size-8 shrink-0 rounded-full text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition flex items-center justify-center"
+                :disabled="settingsSaving"
+                aria-label="Lane entfernen"
+                @click="removeLane(idx)"
+              >
+                <UIcon name="i-lucide-x" class="size-4" />
+              </button>
+            </div>
+            <UButton size="xs" variant="outline" color="neutral" icon="i-lucide-plus" :disabled="settingsSaving || settingsDeleting" @click="addLane">
+              Lane hinzufügen
+            </UButton>
+          </div>
+
           <UAlert v-if="settingsError" color="error" :title="settingsError" @close="settingsError = ''" />
 
           <div class="flex items-center gap-2 pt-2">
             <UButton color="primary" :loading="settingsSaving" :disabled="settingsDeleting" @click="saveListSettings">
-              Save
+              Speichern
             </UButton>
             <UButton color="neutral" variant="ghost" :disabled="settingsSaving || settingsDeleting" @click="showListSettings = false">
-              Cancel
+              Abbrechen
             </UButton>
           </div>
 
           <div class="border-t border-zinc-900 pt-4 mt-2">
             <p class="text-xs text-zinc-500 mb-2">
-              Deletes the list and every task inside it. Can't be undone.
+              Löscht die Liste und alle enthaltenen Tasks. Kann nicht rückgängig gemacht werden.
             </p>
             <UButton
               color="error"
@@ -1026,7 +1168,7 @@ const isEditOpen = computed({
               :disabled="settingsSaving"
               @click="deleteList"
             >
-              Delete list
+              Liste löschen
             </UButton>
           </div>
         </div>

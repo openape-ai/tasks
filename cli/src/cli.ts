@@ -13,6 +13,7 @@ import {
   doneCommand,
   reopenCommand,
   rmCommand,
+  lanesCommand,
 } from './commands/tasks.ts'
 import { docsCommand } from './commands/docs.ts'
 import { openCommand } from './commands/open.ts'
@@ -21,7 +22,7 @@ import { error } from './output.ts'
 const main = defineCommand({
   meta: {
     name: 'ape-tasks',
-    version: '1.1.1',
+    version: '1.3.0',
     description: [
       'Shared task lists for humans and AI agents — persisted across devices and sessions.',
       '',
@@ -38,6 +39,7 @@ const main = defineCommand({
     teams: teamsCommand,
     accept: acceptCommand,
     list: listCommand,
+    lanes: lanesCommand,
     show: showCommand,
     new: newCommand,
     edit: editCommand,

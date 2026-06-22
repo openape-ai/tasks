@@ -2,9 +2,10 @@ import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { defineEventHandler, getRouterParam, readBody, setResponseStatus } from 'h3'
 import { ulid } from 'ulid'
 import { useDb } from '../../../database/drizzle'
-import { tasks, teamMembers } from '../../../database/schema'
+import { tasks, teamMembers, teams } from '../../../database/schema'
 import { requireCaller } from '../../../utils/require-auth'
 import { createProblemError } from '../../../utils/problem'
+import { laneById, resolveLanes } from '../../../utils/lanes'
 import {
   serializeTask,
   VALID_PRIORITY,
@@ -20,6 +21,7 @@ interface CreateBody {
   priority?: string
   due_at?: number | null
   assignee_email?: string | null
+  lane_id?: string | null
   remind_at?: number | null
   reminder_max?: number
   context_url?: string | null
@@ -92,6 +94,19 @@ export default defineEventHandler(async (event) => {
     throw createProblemError({ status: 403, title: 'Viewers cannot create tasks' })
   }
 
+  // Optional lane placement. A lane sets the task's status to its bucket;
+  // without one, lane_id stays NULL and the task falls into the first lane of
+  // its status bucket when rendered.
+  let laneId: string | null = body?.lane_id?.trim() || null
+  let finalStatus: TaskStatus = status
+  if (laneId) {
+    const team = await db.select({ lanes: teams.lanes }).from(teams).where(eq(teams.id, teamId)).get()
+    const lane = laneById(resolveLanes(team?.lanes), laneId)
+    if (!lane) throw createProblemError({ status: 400, title: 'lane not found in this team' })
+    laneId = lane.id
+    finalStatus = lane.status
+  }
+
   // Idempotency: if a dedup_key is given and an open/doing task already carries
   // it in this team, return that one instead of creating a duplicate. A
   // done/archived task for the same key does not block a legitimately new task.
@@ -128,10 +143,11 @@ export default defineEventHandler(async (event) => {
     teamId,
     title,
     notes: body?.notes ?? '',
-    status,
+    status: finalStatus,
     priority,
     dueAt,
     assigneeEmail,
+    laneId,
     sortOrder,
     remindAt,
     reminderMax,
@@ -142,7 +158,7 @@ export default defineEventHandler(async (event) => {
     createdAt: now,
     updatedAt: now,
     updatedBy: caller.email,
-    completedAt: status === 'done' ? now : null,
+    completedAt: finalStatus === 'done' ? now : null,
   })
 
   const row = await db.select().from(tasks).where(eq(tasks.id, id)).get()
