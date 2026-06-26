@@ -65,6 +65,9 @@ importers:
       '@openape/core':
         specifier: ^0.11.0
         version: 0.11.0
+      '@openape/proof-cli':
+        specifier: ^0.1.0
+        version: 0.1.0
       citty:
         specifier: ^0.1.6
         version: 0.1.6
@@ -716,6 +719,10 @@ packages:
     resolution: {integrity: sha512-1whXc+C9+6JOCClb8WSc3DQ6tKhfpRJzOB9oEZV/EI/an6NKQqD9ODCMS7y5cw0jAqy3OXeaaHr6vQRM1CbE1g==}
     engines: {node: '>=20'}
 
+  '@openape/cli-auth@0.5.2':
+    resolution: {integrity: sha512-LK4Oaek0HzKlVHihUwjSgya057C3lMBsEF7gyMWgdXLhHenG4uEhJXMgR/LSGc9zo6LTkXzzVugylOmS5symbA==}
+    engines: {node: '>=20'}
+
   '@openape/core@0.11.0':
     resolution: {integrity: sha512-LPSS0CIdpS6hwiT74O+JpFiGj/SLCHvZppcSrt0ylPu02nXb6q90M2rHJagkg/xU7ofpOwaWHBXG+YL1FuQECw==}
     engines: {node: '>=22'}
@@ -742,6 +749,10 @@ packages:
     engines: {node: '>=22'}
     peerDependencies:
       nuxt: ^4.0.0
+
+  '@openape/proof-cli@0.1.0':
+    resolution: {integrity: sha512-IaRTC+1UmxrE19/WcVZPUzv3dsPWkxpVMfrjt9YcCwzIcOi5ubXLpEHJ4KXYgCsrhBbrs4xrR2C3cmvjWEGMYg==}
+    engines: {node: '>=20'}
 
   '@oxc-minify/binding-android-arm-eabi@0.117.0':
     resolution: {integrity: sha512-5Hf2KsGRjxp3HnPU/mse7cQJa5tWfMFUPZQcgSMVsv2JZnGFFOIDzA0Oja2KDD+VPJqMpEJKc2dCHAGZgJxsGg==}
@@ -5807,6 +5818,10 @@ snapshots:
     dependencies:
       ofetch: 1.5.1
 
+  '@openape/cli-auth@0.5.2':
+    dependencies:
+      ofetch: 1.5.1
+
   '@openape/core@0.11.0':
     dependencies:
       jose: 5.10.0
@@ -5837,6 +5852,11 @@ snapshots:
     transitivePeerDependencies:
       - h3
       - magicast
+
+  '@openape/proof-cli@0.1.0':
+    dependencies:
+      '@openape/cli-auth': 0.5.2
+      citty: 0.1.6
 
   '@oxc-minify/binding-android-arm-eabi@0.117.0':
     optional: true
