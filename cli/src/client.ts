@@ -5,7 +5,7 @@
  * import from here (via the api/config/output shims) rather than reaching
  * into @openape/cli-auth directly.
  */
-import { createSpClient } from '@openape/cli-auth'
+import { createProofClient } from '@openape/proof-cli'
 import type { SpClientState } from '@openape/cli-auth'
 
 export interface TasksState extends SpClientState {
@@ -14,11 +14,11 @@ export interface TasksState extends SpClientState {
   activeTeamId?: string
 }
 
-export const tasksClient = createSpClient<TasksState>({
-  defaultEndpoint: 'https://tasks.openape.ai',
+export const tasksClient = createProofClient<TasksState>({
+  endpoint: 'https://tasks.openape.ai',
   envVar: 'APE_TASKS_ENDPOINT',
   configFile: 'auth-tasks.json',
-  defaultAud: 'tasks.openape.ai',
+  aud: 'tasks.openape.ai',
 })
 
 export const {
